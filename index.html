@@ -1,672 +1,787 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BestPDFEditor</title>
-    <!-- Load Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
-    <!-- Load PDF.js Libraries for rendering -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <!-- NEW: Load pdf-lib for editing and saving PDFs -->
-    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.js"></script>
-    
-    <script>
-        // Set worker source for PDF.js (Crucial for loading PDFs)
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-        
-        // Tailwind Configuration
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                    colors: {
-                        // Updated Colors
-                        'primary-purple': '#500082', // Deep Purple
-                        'primary-accent': 'rgb(255, 190, 10)', // Gold/Orange Accent
-                        
-                        'primary-dark': '#0f172a',
-                        'secondary-light': '#f1f5f9',
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        /* Pattern Layer Styling */
-        .pattern-layer {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1; 
-            /* Deep Purple background */
-            background-color: #500082; 
-            background-image: 
-                /* Repeating Chevron/Diamond Pattern (More visible and logo-like) */
-                repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255, 190, 10, 0.15) 10px, rgba(255, 190, 10, 0.15) 20px),
-                repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(255, 190, 10, 0.15) 10px, rgba(255, 190, 10, 0.15) 20px);
-            background-size: 40px 40px; /* Larger size for a bolder pattern */
-        }
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BestPDFEditor — Live</title>
 
-        .pdf-editor-container {
-            display: grid;
-            grid-template-rows: auto 1fr;
-            height: calc(100vh - 4rem); /* Full viewport height minus header */
-            overflow: hidden;
-            background-color: white; /* Ensure editor panels sit cleanly on the pattern */
-            box-shadow: 0 0 50px rgba(0, 0, 0, 0.2); /* Lift the editor slightly off the pattern */
-        }
-        
-        @media (min-width: 1024px) { /* Desktop: 3 columns */
-            .pdf-editor-container {
-                 /* Apply the 3-column grid directly to the main container for clarity */
-                grid-template-columns: 20rem 1fr 20rem;
-            }
-        }
-        
-        /* Mobile layout (default) is 1 column, stacking vertically */
-        
-        .scrollable {
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        /* Custom styling for the scrollbar */
-        .scrollable::-webkit-scrollbar {
-            width: 8px;
-        }
-        .scrollable::-webkit-scrollbar-track {
-            background: #e2e8f0;
-        }
-        .scrollable::-webkit-scrollbar-thumb {
-            background: #94a3b8;
-            border-radius: 4px;
-        }
-        .scrollable::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
-        }
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
 
-        /* Hide the file input, use the label */
-        #pdfFile {
-            display: none;
-        }
+  <!-- pdf.js and pdf-lib -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.js"></script>
 
-        /* Ensure the canvas is centered */
-        #pdf-viewer-container {
-            display: flex;
-            justify-content: center;
-            align-items: flex-start; /* Align canvas to the top of the viewport */
-            padding: 1rem;
-            background-color: #e2e8f0;
-        }
-        
-        /* Tool Mode Cursor */
-        .tool-text {
-            cursor: crosshair;
-        }
-    </style>
+  <style>
+    :root{--ui-bg:#f8fafc;--accent:#ffbe0a;--purple:#500082;--text:#0f172a}
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background: var(--ui-bg); color: var(--text); }
+    .pattern-layer { position: fixed; inset:0; z-index:-1; background: linear-gradient(45deg, rgba(80,0,130,0.06) 25%, transparent 25%) 0 0/40px 40px, linear-gradient(-45deg, rgba(255,190,10,0.04) 25%, transparent 25%) 0 0/40px 40px; }
+    /* centered canvas area */
+    .viewer { display:flex; gap:1rem; height: calc(100vh - 72px); padding: 1rem; box-sizing:border-box; }
+    .sidebar { width: 18rem; background: white; border-radius: 0.75rem; padding: 1rem; box-shadow: 0 6px 30px rgba(16,24,40,0.06); }
+    .rightbar { width: 18rem; background: white; border-radius: 0.75rem; padding: 1rem; box-shadow: 0 6px 30px rgba(16,24,40,0.06); }
+    .canvas-wrap { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; }
+    .pdf-stage { position: relative; background: #e6eef8; padding: 1rem; border-radius: 0.75rem; display:inline-block; }
+    canvas#pdf-canvas { display:block; border-radius: 6px; box-shadow: 0 10px 30px rgba(2,6,23,0.12); background:white; }
+    /* overlay layer sits above canvas */
+    #overlay-layer { position: absolute; left: 0; top: 0; pointer-events: none; }
+    .overlay-item { position:absolute; pointer-events: auto; }
+    .text-editor {
+      min-width: 40px;
+      max-width: 80vw;
+      min-height: 24px;
+      outline: none;
+      border: 1px dashed rgba(16,24,40,0.12);
+      background: rgba(255,255,255,0.85);
+      padding: 4px 6px;
+      border-radius: 4px;
+      box-shadow: 0 2px 6px rgba(16,24,40,0.08);
+      resize: none;
+    }
+    .tool-btn { display:flex; gap:.5rem; align-items:center; justify-content:center; padding:.5rem; border-radius:.5rem; cursor:pointer; user-select:none; }
+    .tool-btn.active { background: var(--purple); color: white; }
+    .statusbar { height: 44px; display:flex; align-items:center; gap:1rem; padding:0 1rem; background: white; border-top: 1px solid rgba(2,6,23,0.04); }
+    .small { font-size: 0.85rem; color: #475569; }
+    input[type=color] { width: 2.5rem; height:2.3rem; padding:0; border-radius: 6px; border: none; }
+    /* hide file input */
+    #pdfFile { display:none; }
+  </style>
 </head>
-<body class="bg-white font-sans text-primary-dark">
-    
-    <!-- Background Pattern Layer -->
-    <div class="pattern-layer"></div>
+<body>
+  <div class="pattern-layer"></div>
 
-    <!-- Header -->
-    <header class="bg-primary-purple text-white p-4 shadow-lg flex justify-between items-center h-16">
-        <h1 class="text-2xl font-bold tracking-tight">BestPDFEditor</h1>
-        <!-- Status message updated to use the accent color -->
-        <div id="status-message" class="text-primary-accent text-sm transition duration-300">Ready to Edit</div>
-    </header>
-
-    <div class="pdf-editor-container">
-        
-        <!-- File Input and Controls (Left Panel on Desktop) -->
-        <div id="controls-panel" class="p-4 bg-secondary-light border-r border-gray-200 scrollable text-primary-purple">
-            <h2 class="text-lg font-semibold mb-4">1. Upload PDF</h2>
-            
-            <!-- File Input Area -->
-            <label for="pdfFile" class="block cursor-pointer p-6 mb-6 text-center border-2 border-dashed border-primary-purple text-primary-purple rounded-xl bg-white hover:bg-primary-purple hover:text-white transition duration-200 shadow-md">
-                <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-8 w-8 mb-2" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M5.5 13a1.5 1.5 0 01-3 0v-5a.5.5 0 011 0v5a.5.5 0 001 0v-5a.5.5 0 011 0v5zm4 0a1.5 1.5 0 01-3 0v-5a.5.5 0 011 0v5a.5.5 0 001 0v-5a.5.5 0 011 0v5zm4 0a1.5 1.5 0 01-3 0v-5a.5.5 0 011 0v5a.5.5 0 001 0v-5a.5.5 0 011 0v5zM15.5 4H10v.5a.5.5 0 001 0V4h4.5a.5.5 0 010 1H10v.5a.5.5 0 00-1 0V5H4.5A2.5 2.5 0 002 7.5v6A2.5 2.5 0 004.5 16h11A2.5 2.5 0 0018 13.5v-6A2.5 2.5 0 0015.5 4zM17 13.5A1.5 1.5 0 0115.5 15h-11A1.5 1.5 0 013 13.5v-6A1.5 1.5 0 014.5 6H10v1a.5.5 0 001 0V6h4.5A1.5 1.5 0 0117 7.5v6z" />
-                </svg>
-                <span class="font-medium">Click to select PDF</span>
-                <p class="text-xs mt-1 opacity-75">or drag and drop here</p>
-            </label>
-            <input type="file" id="pdfFile" accept="application/pdf" onchange="handleFileSelect(event)">
-            
-            <div id="file-info" class="mb-6 p-4 bg-white rounded-xl shadow-inner hidden">
-                <p class="font-medium text-sm text-primary-purple">File Loaded:</p>
-                <p id="file-name" class="text-primary-accent truncate"></p>
-                <p id="page-count" class="text-xs text-gray-500 mt-1"></p>
-            </div>
-
-            <!-- Editing Tools Panel -->
-            <div id="editing-tools" class="space-y-4 pt-4 border-t border-gray-200 hidden">
-                <h2 class="text-lg font-semibold">2. Editing Tools</h2>
-                
-                <!-- Add Text/Signature Tool -->
-                <button onclick="startTextTool()" class="w-full flex items-center justify-center p-3 bg-white text-primary-accent border border-primary-accent rounded-xl shadow hover:bg-primary-purple hover:text-white transition duration-200 font-medium">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-                    </svg>
-                    Add Text (Click on PDF)
-                </button>
-                
-                <!-- Rotate Page Tool (Uses pdf-lib now) -->
-                <button onclick="rotatePage()" class="w-full flex items-center justify-center p-3 bg-white text-gray-700 border border-gray-300 rounded-xl shadow hover:bg-gray-100 transition duration-200 font-medium">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M4.332 13.774a3 3 0 013.435.127 3.001 3.001 0 004.288 0 3 3 0 013.435-.127c.437-.235 1.144-.407 1.832.067C18.257 14.15 19 14.887 19 16.5v1.5a1 1 0 01-1 1h-1a1 1 0 01-1-1v-1.5c0-.629-.68-1.29-1.332-1.29s-1.332.661-1.332 1.29v1.5a1 1 0 01-1 1h-1a1 1 0 01-1-1v-1.5c0-.629-.68-1.29-1.332-1.29s-1.332.661-1.332 1.29v1.5a1 1 0 01-1 1H5a1 1 0 01-1-1v-1.5c0-.629-.68-1.29-1.332-1.29s-1.332.661-1.332 1.29v1.5a1 1 0 01-1 1H1a1 1 0 01-1-1v-1.5c0-1.613.743-2.35 1.41-2.659.688-.474 1.395-.302 1.832-.067zM10 1a9 9 0 100 18A9 9 0 0010 1zM7 11a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
-                    </svg>
-                    Rotate Page (90°)
-                </button>
-
-                <!-- Page Navigation -->
-                <div class="flex justify-between items-center space-x-2 pt-4 border-t border-gray-200">
-                    <button id="prev-page-btn" disabled onclick="changePage(-1)" class="p-2 bg-white text-gray-700 border border-gray-300 rounded-lg shadow hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
-                    </button>
-                    <span id="current-page-display" class="font-medium text-sm">Page 1 of 1</span>
-                    <button id="next-page-btn" disabled onclick="changePage(1)" class="p-2 bg-white text-gray-700 border border-gray-300 rounded-lg shadow hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
-                    </button>
-                </div>
-            </div>
-            
-        </div>
-
-        <!-- PDF Viewer Area (Center Panel on Desktop) -->
-        <div id="pdf-viewer-container" class="lg:col-span-1 scrollable relative">
-            
-            <div id="initial-state" class="absolute inset-0 flex flex-col justify-center items-center text-gray-500 transition duration-300 p-8">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0011.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-                <p class="text-lg font-medium text-center">Open a PDF file to start editing.</p>
-                <p class="text-sm text-center mt-2">Click the "Add Text" button and then click the PDF to type.</p>
-            </div>
-
-            <!-- Canvas for PDF Rendering (Added click listener) -->
-            <canvas id="pdf-canvas" class="bg-white rounded-lg shadow-xl border-4 border-white" onclick="handleCanvasClick(event)"></canvas>
-            
-        </div>
-        
-        <!-- Action/Save Panel (Right Panel on Desktop) -->
-        <div id="save-panel" class="lg:col-span-1 p-4 bg-secondary-light border-l border-gray-200 scrollable hidden text-primary-purple">
-            <h2 class="text-lg font-semibold mb-4">3. Finish & Download</h2>
-
-            <div id="save-content" class="p-6 bg-white rounded-xl shadow-md">
-                <p class="text-gray-600 mb-4">Your edits (text, rotation) are saved internally. Click the button below to compile and download the new, modified PDF file.</p>
-                
-                <!-- Download Button (Now executes actual download) -->
-                <button onclick="downloadEditedPdf()" class="w-full flex items-center justify-center p-4 bg-primary-accent text-primary-dark font-bold rounded-xl shadow-lg hover:bg-primary-accent/90 transition duration-200 active:ring-4 active:ring-primary-accent/50">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download Edited PDF
-                </button>
-            </div>
-
-        </div>
+  <header class="flex items-center justify-between px-6 py-4 bg-white shadow-sm">
+    <div class="flex items-center gap-4">
+      <h1 class="text-2xl font-bold text-primary-purple" style="color:var(--purple)">BestPDFEditor</h1>
+      <label for="pdfFile" class="px-3 py-1 border border-gray-200 rounded-md cursor-pointer small">Open PDF</label>
+      <input id="pdfFile" type="file" accept="application/pdf" />
+      <div id="file-name" class="small text-gray-500 ml-2">No file loaded</div>
     </div>
 
-    <!-- Custom Modal for Alerts/Inputs (replacing alert/confirm) -->
-    <div id="custom-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full transform transition-all duration-300 scale-95">
-            <h3 id="modal-title" class="text-xl font-bold mb-3 text-primary-purple"></h3>
-            <p id="modal-message" class="text-gray-700 mb-4"></p>
-            <input type="text" id="modal-input" class="w-full p-2 border border-gray-300 rounded-lg focus:border-primary-purple focus:ring focus:ring-primary-purple focus:ring-opacity-50 hidden" placeholder="Enter text here...">
-            <div class="flex justify-end space-x-3 mt-4">
-                <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition duration-150">Cancel</button>
-                <!-- OK Button - Updated to use accent color and dark text -->
-                <button id="modal-ok-btn" class="px-4 py-2 bg-primary-accent text-primary-dark font-medium rounded-lg hover:bg-primary-accent/90 transition duration-150">OK</button>
-            </div>
-        </div>
+    <div class="flex items-center gap-4">
+      <div class="small text-gray-600" id="page-display">—</div>
+      <div class="small text-gray-600">Zoom:</div>
+      <button id="zoom-out" class="px-2 py-1 border rounded small">−</button>
+      <div id="zoom-level" class="px-2 small">100%</div>
+      <button id="zoom-in" class="px-2 py-1 border rounded small">+</button>
+      <button id="download-btn" class="px-4 py-2 bg-yellow-400 rounded font-semibold shadow">Save PDF</button>
     </div>
+  </header>
 
+  <main class="viewer">
+    <!-- Left toolbar -->
+    <aside class="sidebar">
+      <div class="mb-4">
+        <div class="font-semibold">Tools</div>
+        <div class="mt-3 grid grid-cols-2 gap-2">
+          <div id="tool-select" class="tool-btn border small">Select</div>
+          <div id="tool-text" class="tool-btn border small">Text</div>
+          <div id="tool-draw" class="tool-btn border small">Draw</div>
+          <div id="tool-eraser" class="tool-btn border small">Eraser</div>
+          <div id="clear-page" class="tool-btn border small col-span-2">Clear Page Overlays</div>
+        </div>
+      </div>
 
-    <script>
-        // Global variables for PDF handling
-        let pdfDoc = null; // pdf.js document (for rendering)
-        let pdfLibDoc = null; // pdf-lib document (for editing)
-        let currentPageNum = 1;
-        let pageCount = 0;
-        let toolMode = null; // 'text', 'rotate', etc.
-        
-        // DOM elements
-        const fileInfoEl = document.getElementById('file-info');
-        const fileNameEl = document.getElementById('file-name');
-        const pageCountEl = document.getElementById('page-count');
-        const editingToolsEl = document.getElementById('editing-tools');
-        const savePanelEl = document.getElementById('save-panel');
-        const canvas = document.getElementById('pdf-canvas');
-        const ctx = canvas.getContext('2d');
-        const initialStateEl = document.getElementById('initial-state');
-        const currentPageDisplayEl = document.getElementById('current-page-display');
-        const prevPageBtn = document.getElementById('prev-page-btn');
-        const nextPageBtn = document.getElementById('next-page-btn');
-        const statusMessageEl = document.getElementById('status-message');
-        
-        // --- Utility Functions (Modal) ---
-        /**
-         * Custom modal utility to replace alert() and prompt().
-         * @param {string} title 
-         * @param {string} message 
-         * @param {boolean} isPrompt 
-         * @returns {Promise<string|null>}
-         */
-        function showModal(title, message, isPrompt = false) {
-            return new Promise(resolve => {
-                const modal = document.getElementById('custom-modal');
-                document.getElementById('modal-title').textContent = title;
-                document.getElementById('modal-message').textContent = message;
-                const inputEl = document.getElementById('modal-input');
-                const okBtn = document.getElementById('modal-ok-btn');
-                const cancelBtn = document.getElementById('modal-cancel-btn');
+      <div class="mb-4">
+        <div class="font-semibold">Appearance</div>
+        <div class="mt-3 flex items-center gap-2">
+          <input type="color" id="color-picker" value="#ffbe0a" title="Pick color" />
+          <div class="small text-gray-600">Color</div>
+        </div>
+        <div class="mt-3">
+          <label class="small text-gray-600">Font size</label>
+          <input id="font-size" type="range" min="8" max="72" value="18" class="w-full" />
+        </div>
+        <div class="mt-3">
+          <label class="small text-gray-600">Stroke width</label>
+          <input id="stroke-width" type="range" min="1" max="20" value="2" class="w-full" />
+        </div>
+      </div>
 
-                inputEl.value = '';
-                inputEl.classList.toggle('hidden', !isPrompt);
-                cancelBtn.classList.toggle('hidden', !isPrompt);
-                modal.classList.add('flex');
-                modal.classList.remove('hidden');
+      <div>
+        <div class="font-semibold">Page Controls</div>
+        <div class="mt-3 flex gap-2">
+          <button id="prev-page" class="px-3 py-1 border rounded small">Prev</button>
+          <button id="next-page" class="px-3 py-1 border rounded small">Next</button>
+        </div>
+      </div>
+    </aside>
 
-                const handleOK = () => {
-                    modal.classList.add('hidden');
-                    modal.classList.remove('flex');
-                    okBtn.removeEventListener('click', handleOK);
-                    cancelBtn.removeEventListener('click', handleCancel);
-                    resolve(isPrompt ? inputEl.value : true);
-                };
+    <!-- Canvas center -->
+    <section class="canvas-wrap">
+      <div class="pdf-stage" id="pdf-stage">
+        <canvas id="pdf-canvas"></canvas>
+        <!-- overlay layer (positioned absolutely on top of canvas) -->
+        <div id="overlay-layer"></div>
+      </div>
+    </section>
 
-                const handleCancel = () => {
-                    modal.classList.add('hidden');
-                    modal.classList.remove('flex');
-                    okBtn.removeEventListener('click', handleOK);
-                    cancelBtn.removeEventListener('click', handleCancel);
-                    resolve(null);
-                };
+    <!-- Rightbar (info + download) -->
+    <aside class="rightbar">
+      <div class="font-semibold mb-2">Summary</div>
+      <div class="small text-gray-600 mb-3">Edits are applied live on the canvas. Use "Save PDF" to generate the final PDF with all edits merged.</div>
 
-                okBtn.onclick = handleOK;
-                cancelBtn.onclick = handleCancel;
+      <div class="mt-4">
+        <div class="font-semibold">Actions</div>
+        <div class="mt-2 flex flex-col gap-2">
+          <button id="download-btn-2" class="px-4 py-2 bg-yellow-400 rounded font-semibold">Save PDF</button>
+          <button id="reset-all" class="px-4 py-2 border rounded">Reset All</button>
+        </div>
+      </div>
+
+      <div class="mt-6">
+        <div class="font-semibold">Tips</div>
+        <ul class="list-disc ml-5 mt-2 small text-gray-600">
+          <li>Text: select Text tool then click anywhere to type. Press Enter or click outside to commit.</li>
+          <li>Draw: drag to draw. Use Eraser to remove last stroke on a page.</li>
+          <li>Zoom with the buttons, overlays scale responsively.</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="statusbar">
+    <div id="status" class="small">Ready — Open a PDF to begin.</div>
+  </footer>
+
+<script>
+/* -----------------------------
+   Globals & state
+   ----------------------------- */
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+let pdfJsDoc = null;           // pdf.js document (for rendering background)
+let originalPdfBytes = null;   // original file bytes (used when generating final PDF)
+let currentPage = 1;
+let pageCount = 0;
+
+let scale = 1.0;               // zoom
+const MIN_SCALE = 0.25, MAX_SCALE = 4;
+
+const overlays = []; // overlays[pageIndex] = { texts: [...], strokes: [...] }
+
+const state = {
+  tool: 'select', // select | text | draw | eraser
+  color: '#ffbe0a',
+  fontSize: 18,
+  strokeWidth: 2,
+  drawing: false,
+  currentStroke: null
+};
+
+/* DOM */
+const fileInput = document.getElementById('pdfFile');
+const fileNameEl = document.getElementById('file-name');
+const pdfCanvas = document.getElementById('pdf-canvas');
+const canvasCtx = pdfCanvas.getContext('2d');
+const overlayLayer = document.getElementById('overlay-layer');
+const pdfStage = document.getElementById('pdf-stage');
+const statusEl = document.getElementById('status');
+const pageDisplayEl = document.getElementById('page-display');
+const zoomLevelEl = document.getElementById('zoom-level');
+
+/* toolbar elements */
+const toolSelectBtn = document.getElementById('tool-select');
+const toolTextBtn   = document.getElementById('tool-text');
+const toolDrawBtn   = document.getElementById('tool-draw');
+const toolEraserBtn = document.getElementById('tool-eraser');
+const clearPageBtn  = document.getElementById('clear-page');
+
+const colorPicker = document.getElementById('color-picker');
+const fontSizeInput = document.getElementById('font-size');
+const strokeWidthInput = document.getElementById('stroke-width');
+
+const prevPageBtn = document.getElementById('prev-page');
+const nextPageBtn = document.getElementById('next-page');
+
+const zoomInBtn  = document.getElementById('zoom-in');
+const zoomOutBtn = document.getElementById('zoom-out');
+
+const downloadButtons = [document.getElementById('download-btn'), document.getElementById('download-btn-2')];
+const resetAllBtn = document.getElementById('reset-all');
+
+/* -----------------------------
+   Helpers
+   ----------------------------- */
+function showStatus(msg, timeout=2200) {
+  statusEl.textContent = msg;
+  if (timeout) {
+    clearTimeout(showStatus._t);
+    showStatus._t = setTimeout(()=> {
+      statusEl.textContent = 'Ready';
+    }, timeout);
+  }
+}
+
+function setTool(toolName) {
+  state.tool = toolName;
+  // active class toggle
+  [toolSelectBtn, toolTextBtn, toolDrawBtn, toolEraserBtn].forEach(btn => btn.classList.remove('active'));
+  if (toolName === 'select') toolSelectBtn.classList.add('active');
+  if (toolName === 'text') toolTextBtn.classList.add('active');
+  if (toolName === 'draw') toolDrawBtn.classList.add('active');
+  if (toolName === 'eraser') toolEraserBtn.classList.add('active');
+
+  // pointer behavior: enable pointer events on overlay for text/select; for draw, overlay should not capture pointer
+  if (toolName === 'text' || toolName === 'select') {
+    overlayLayer.style.pointerEvents = 'auto';
+    pdfCanvas.style.cursor = 'text';
+  } else if (toolName === 'draw') {
+    overlayLayer.style.pointerEvents = 'none';
+    pdfCanvas.style.cursor = 'crosshair';
+  } else if (toolName === 'eraser') {
+    overlayLayer.style.pointerEvents = 'auto';
+    pdfCanvas.style.cursor = 'not-allowed';
+  } else {
+    overlayLayer.style.pointerEvents = 'auto';
+    pdfCanvas.style.cursor = 'default';
+  }
+
+  showStatus(`Tool: ${toolName}`);
+}
+
+/* Convert a client (mouse) position to PDF coordinates based on current scale and canvas size.
+   PDF coordinates assume origin (0,0) at bottom-left. We store overlays in PDF coordinates so scaling
+   and zoom don't disrupt saved positions.
+*/
+function clientToPdfCoords(clientX, clientY) {
+  const rect = pdfCanvas.getBoundingClientRect();
+  const xOnCanvas = clientX - rect.left;
+  const yOnCanvas = clientY - rect.top;
+  // account for the CSS transform scale; our canvas drawing is actual pixel width*scale, but we set canvas.width = viewport.width * scale,
+  // and we render using scale=scale on context; to simplify: we will treat canvas intrinsic width/height as the rendered dimensions (we set them accordingly).
+  // So pdfX = xOnCanvas / scaleToPdf where scaleToPdf = canvas.width / pdfPageWidth
+  const pageWidthPx = pdfCanvas.width;  // actual pixel width used for rendering
+  const pageHeightPx = pdfCanvas.height;
+  // We will store PDF coords normalized to PDF units (points): map proportionally to pdf page size (we saved pageSizesInPoints when rendering)
+  const pdfPage = pageSizesInPoints[currentPage - 1];
+  if (!pdfPage) return { x: xOnCanvas, y: yOnCanvas };
+
+  const pdfX = (xOnCanvas / pageWidthPx) * pdfPage.width;
+  // invert Y
+  const pdfY = pdfPage.height - (yOnCanvas / pageHeightPx) * pdfPage.height;
+  return { x: pdfX, y: pdfY };
+}
+
+/* Convert PDF coordinates (points) to overlay pixel coordinates (left, top) relative to canvas box,
+   given the current canvas pixel dimensions.
+*/
+function pdfToOverlayCoords(pdfX, pdfY) {
+  const pageWidthPx = pdfCanvas.width;
+  const pageHeightPx = pdfCanvas.height;
+  const pdfPage = pageSizesInPoints[currentPage - 1];
+  if (!pdfPage) return { left: pdfX, top: pdfY };
+
+  const left = (pdfX / pdfPage.width) * pageWidthPx;
+  const top = ( (pdfPage.height - pdfY) / pdfPage.height ) * pageHeightPx;
+  return { left, top };
+}
+
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+/* -----------------------------
+   Overlay management
+   overlays[pageIndex] = { texts: [ {x,y,size,color,text,id} ... ], strokes: [ {points: [{x,y}], color, width, id} ... ] }
+   ----------------------------- */
+function ensureOverlayFor(pageIdx) {
+  if (!overlays[pageIdx]) overlays[pageIdx] = { texts: [], strokes: [] };
+  return overlays[pageIdx];
+}
+
+let idCounter = 1;
+function genId(prefix='id') { return `${prefix}_${Date.now()}_${idCounter++}`; }
+
+/* renderOverlayLayer: draws DOM items for currentPage's overlays (text boxes and strokes) */
+function renderOverlayLayer() {
+  // clear layer
+  overlayLayer.innerHTML = '';
+  const pageIdx = currentPage - 1;
+  const ov = overlays[pageIdx];
+  if (!ov) return;
+
+  // draw strokes as an <svg> appended to overlay layer so they scale nicely with canvas
+  if (ov.strokes && ov.strokes.length) {
+    // create svg with same pixel dimensions as canvas
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', pdfCanvas.width);
+    svg.setAttribute('height', pdfCanvas.height);
+    svg.style.position = 'absolute';
+    svg.style.left = 0;
+    svg.style.top = 0;
+    svg.style.pointerEvents = 'none';
+    ov.strokes.forEach(stroke => {
+      if (!stroke.points || stroke.points.length < 2) return;
+      const path = document.createElementNS(svgNS, 'path');
+      const d = stroke.points.map((pt, i) => {
+        // convert pdf coords to overlay coords
+        const p = pdfToOverlayCoords(pt.x, pt.y);
+        return (i === 0 ? `M ${p.left} ${p.top}` : `L ${p.left} ${p.top}`);
+      }).join(' ');
+      path.setAttribute('d', d);
+      path.setAttribute('stroke', stroke.color || '#000');
+      path.setAttribute('stroke-width', stroke.width || 2);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      svg.appendChild(path);
+    });
+    overlayLayer.appendChild(svg);
+  }
+
+  // create divs for texts
+  if (ov.texts && ov.texts.length) {
+    ov.texts.forEach(t => {
+      const coords = pdfToOverlayCoords(t.x, t.y);
+      const div = document.createElement('div');
+      div.className = 'overlay-item';
+      div.style.left = coords.left + 'px';
+      div.style.top = coords.top + 'px';
+      div.style.transform = 'translate(0,0)';
+      // contenteditable-like appearance for committed text (not editable unless selected)
+      const span = document.createElement('div');
+      span.style.fontSize = (t.size * (pdfCanvas.width / pageSizesInPoints[currentPage - 1].width)) + 'px';
+      span.style.color = t.color;
+      span.style.fontWeight = '600';
+      span.textContent = t.text;
+      div.appendChild(span);
+      // allow select -> if user double-clicks while in 'text' tool, open editor
+      div.addEventListener('dblclick', (e) => {
+        if (state.tool === 'text') openInlineTextEditor(div, t);
+      });
+      // right-click to delete when eraser tool active
+      div.addEventListener('click', (e) => {
+        if (state.tool === 'eraser') {
+          // remove this text from overlays
+          const idx = overlays[currentPage - 1].texts.findIndex(tt => tt.id === t.id);
+          if (idx >= 0) overlays[currentPage - 1].texts.splice(idx,1);
+          renderOverlayLayer();
+        }
+      });
+      overlayLayer.appendChild(div);
+    });
+  }
+}
+
+/* Open an inline editable textarea on overlayLayer to edit/commit text */
+function openInlineTextEditor(containerDiv, textObj, preferredLeftTop) {
+  // Create editable element
+  const editor = document.createElement('div');
+  editor.contentEditable = 'true';
+  editor.className = 'text-editor';
+  editor.style.position = 'absolute';
+  editor.style.left = (preferredLeftTop ? preferredLeftTop.left : containerDiv.style.left) + 'px';
+  editor.style.top  = (preferredLeftTop ? preferredLeftTop.top  : containerDiv.style.top ) + 'px';
+  editor.style.minWidth = '60px';
+  editor.style.maxWidth = '60vw';
+  editor.style.fontSize = (textObj.size * (pdfCanvas.width / pageSizesInPoints[currentPage - 1].width)) + 'px';
+  editor.style.color = textObj.color;
+  editor.innerText = textObj.text || '';
+  editor.style.pointerEvents = 'auto';
+  overlayLayer.appendChild(editor);
+  editor.focus();
+
+  function commit() {
+    const newText = editor.innerText.trim();
+    if (newText.length === 0) {
+      // delete
+      const idx = overlays[currentPage - 1].texts.findIndex(tt => tt.id === textObj.id);
+      if (idx >= 0) overlays[currentPage - 1].texts.splice(idx,1);
+    } else {
+      textObj.text = newText;
+    }
+    overlayLayer.removeChild(editor);
+    renderOverlayLayer();
+  }
+
+  editor.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      commit();
+    } else if (ev.key === 'Escape') {
+      overlayLayer.removeChild(editor);
+      renderOverlayLayer();
+    }
+  });
+
+  editor.addEventListener('blur', commit);
+}
+
+/* Create new inline editor when user clicks in text mode */
+function handleCanvasTextCreate(clientX, clientY) {
+  // compute PDF coords
+  const pdfCoords = clientToPdfCoords(clientX, clientY);
+  const pageIdx = currentPage - 1;
+  ensureOverlayFor(pageIdx);
+  const id = genId('txt');
+  const newText = { id, x: pdfCoords.x, y: pdfCoords.y, size: parseInt(state.fontSize,10), color: state.color, text: '' };
+  overlays[pageIdx].texts.push(newText);
+
+  // create editor positioned visually
+  const overlayCoords = pdfToOverlayCoords(newText.x, newText.y);
+  // create container div (in DOM) and open editor
+  openInlineTextEditor(document.createElement('div'), newText, overlayCoords);
+  renderOverlayLayer(); // will show committed items; editor is appended separately
+}
+
+/* Start a stroke when in draw mode */
+function startStroke(clientX, clientY) {
+  state.drawing = true;
+  const pdfCoords = clientToPdfCoords(clientX, clientY);
+  const stroke = { id: genId('stroke'), color: state.color, width: parseFloat(state.strokeWidth), points: [{x: pdfCoords.x, y: pdfCoords.y}] };
+  ensureOverlayFor(currentPage - 1);
+  overlays[currentPage - 1].strokes.push(stroke);
+  state.currentStroke = stroke;
+  renderOverlayLayer();
+}
+
+/* Continue stroke as mouse moves */
+function continueStroke(clientX, clientY) {
+  if (!state.drawing || !state.currentStroke) return;
+  const pdfCoords = clientToPdfCoords(clientX, clientY);
+  state.currentStroke.points.push({x: pdfCoords.x, y: pdfCoords.y});
+  // For performance, we re-render overlay quickly
+  renderOverlayLayer();
+}
+
+/* End stroke */
+function endStroke() {
+  state.drawing = false;
+  state.currentStroke = null;
+}
+
+/* Eraser: remove nearest stroke or text within threshold */
+function handleEraser(clientX, clientY) {
+  const pdfCoords = clientToPdfCoords(clientX, clientY);
+  const pageOv = overlays[currentPage - 1];
+  if (!pageOv) return;
+
+  // find nearest stroke point within tolerance (in PDF units)
+  const TOLERANCE_PX = 8 * (pageSizesInPoints[currentPage - 1].width / pdfCanvas.width); // convert px to pdf units
+  // remove stroke if any point near click
+  for (let i = pageOv.strokes.length - 1; i >= 0; --i) {
+    const stroke = pageOv.strokes[i];
+    for (const pt of stroke.points) {
+      const dx = pt.x - pdfCoords.x;
+      const dy = pt.y - pdfCoords.y;
+      if (Math.sqrt(dx*dx + dy*dy) < TOLERANCE_PX) {
+        pageOv.strokes.splice(i, 1);
+        renderOverlayLayer();
+        return;
+      }
+    }
+  }
+  // also check text boxes: if click inside bounding box, remove text
+  for (let i = pageOv.texts.length -1; i >= 0; --i) {
+    const t = pageOv.texts[i];
+    const BOX_W = Math.max(40, t.size * 4);
+    const BOX_H = Math.max(16, t.size * 1.4);
+    if (Math.abs(t.x - pdfCoords.x) < (BOX_W * (pageSizesInPoints[currentPage -1].width / pdfCanvas.width)) &&
+        Math.abs(t.y - pdfCoords.y) < (BOX_H * (pageSizesInPoints[currentPage -1].height / pdfCanvas.height))) {
+      pageOv.texts.splice(i,1);
+      renderOverlayLayer();
+      return;
+    }
+  }
+}
+
+/* Clear overlays for current page */
+function clearCurrentPageOverlays() {
+  overlays[currentPage - 1] = { texts: [], strokes: [] };
+  renderOverlayLayer();
+  showStatus('Cleared overlays for page ' + currentPage);
+}
+
+/* Reset all */
+function resetAll() {
+  for (let i = 0; i < overlays.length; ++i) overlays[i] = {texts:[], strokes:[]};
+  renderOverlayLayer();
+  showStatus('Reset all overlays');
+}
+
+/* -----------------------------
+   PDF rendering (pdf.js)
+   We'll store pageSizesInPoints (width/height in PDF points) to convert coordinates
+   ----------------------------- */
+const pageSizesInPoints = []; // index by page-1
+
+async function loadPdfBytes(arrayBuffer, name) {
+  originalPdfBytes = arrayBuffer.slice(0); // keep a copy
+  pdfJsDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  pageCount = pdfJsDoc.numPages;
+  fileNameEl.textContent = name || 'Loaded PDF';
+  overlays.length = pageCount; // initialize slots
+  for (let i=0;i<pageCount;i++) overlays[i] = { texts: [], strokes: []};
+  await renderPage(1);
+}
+
+async function renderPage(pageNum) {
+  if (!pdfJsDoc) return;
+  currentPage = clamp(pageNum, 1, pageCount);
+  const page = await pdfJsDoc.getPage(currentPage);
+  // get viewport at scale = 1 for PDF point sizes; then set canvas pixel size according to desired scale.
+  const unscaledViewport = page.getViewport({ scale: 1 });
+  pageSizesInPoints[currentPage - 1] = { width: unscaledViewport.width, height: unscaledViewport.height };
+
+  // Determine display scale so the page fits comfortably into pdf-stage container width if needed
+  // We'll render using scaleValue = baseScale * devicePixelRatio * zoom scale
+  const container = pdfStage;
+  const maxWidth = Math.max(400, container.clientWidth - 32);
+  let baseScale = 1;
+  if (unscaledViewport.width > maxWidth) {
+    baseScale = maxWidth / unscaledViewport.width;
+  }
+  const deviceRatio = window.devicePixelRatio || 1;
+  const renderScale = baseScale * scale;
+
+  const viewport = page.getViewport({ scale: renderScale });
+
+  // set canvas pixel size
+  pdfCanvas.width = Math.round(viewport.width * deviceRatio);
+  pdfCanvas.height = Math.round(viewport.height * deviceRatio);
+  pdfCanvas.style.width = Math.round(viewport.width) + 'px';
+  pdfCanvas.style.height = Math.round(viewport.height) + 'px';
+  // adjust overlay layer size and position
+  overlayLayer.style.width = pdfCanvas.style.width;
+  overlayLayer.style.height = pdfCanvas.style.height;
+  overlayLayer.style.left = pdfCanvas.offsetLeft + 'px';
+  overlayLayer.style.top = pdfCanvas.offsetTop + 'px';
+  overlayLayer.style.pointerEvents = 'auto';
+  overlayLayer.style.transform = 'translate(0,0)';
+
+  // scale context for device pixel ratio
+  canvasCtx.setTransform(deviceRatio, 0, 0, deviceRatio, 0, 0);
+  canvasCtx.clearRect(0,0, pdfCanvas.width, pdfCanvas.height);
+
+  const renderContext = {
+    canvasContext: canvasCtx,
+    viewport: viewport
+  };
+
+  await page.render(renderContext).promise;
+
+  pageDisplayEl.textContent = `Page ${currentPage} / ${pageCount}`;
+  zoomLevelEl.textContent = `${Math.round(scale * 100)}%`;
+
+  // Ensure overlays are rendered for this page
+  renderOverlayLayer();
+}
+
+/* -----------------------------
+   Event wiring
+   ----------------------------- */
+
+// file input
+fileInput.addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const ab = await f.arrayBuffer();
+  await loadPdfBytes(ab, f.name);
+  showStatus('Loaded PDF: ' + f.name);
+});
+
+// drag and drop onto stage
+pdfStage.addEventListener('dragover', (ev) => { ev.preventDefault(); });
+pdfStage.addEventListener('drop', async (ev) => {
+  ev.preventDefault();
+  const f = ev.dataTransfer.files && ev.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') {
+    const ab = await f.arrayBuffer();
+    await loadPdfBytes(ab, f.name);
+    showStatus('Loaded PDF: ' + f.name);
+  } else {
+    showStatus('Please drop a PDF file.');
+  }
+});
+
+// tool buttons
+toolSelectBtn.addEventListener('click', () => setTool('select'));
+toolTextBtn.addEventListener('click', () => setTool('text'));
+toolDrawBtn.addEventListener('click', () => setTool('draw'));
+toolEraserBtn.addEventListener('click', () => setTool('eraser'));
+clearPageBtn.addEventListener('click', clearCurrentPageOverlays);
+
+// appearance
+colorPicker.addEventListener('input', (e) => { state.color = e.target.value; showStatus('Color: ' + state.color); });
+fontSizeInput.addEventListener('input', (e) => { state.fontSize = parseInt(e.target.value,10); showStatus('Font size: ' + state.fontSize); });
+strokeWidthInput.addEventListener('input', (e) => { state.strokeWidth = parseInt(e.target.value,10); showStatus('Stroke width: ' + state.strokeWidth); });
+
+// page navigation
+prevPageBtn.addEventListener('click', () => { if (currentPage > 1) renderPage(currentPage - 1); });
+nextPageBtn.addEventListener('click', () => { if (currentPage < pageCount) renderPage(currentPage + 1); });
+
+// zoom
+zoomInBtn.addEventListener('click', () => {
+  scale = clamp(scale * 1.2, MIN_SCALE, MAX_SCALE);
+  renderPage(currentPage);
+});
+zoomOutBtn.addEventListener('click', () => {
+  scale = clamp(scale / 1.2, MIN_SCALE, MAX_SCALE);
+  renderPage(currentPage);
+});
+
+// canvas interactions for drawing and text creation
+function getCanvasClientPos(e) {
+  // support touch events
+  if (e.touches && e.touches[0]) {
+    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  } else {
+    return { x: e.clientX, y: e.clientY };
+  }
+}
+
+pdfCanvas.addEventListener('mousedown', (e) => {
+  const { x, y } = getCanvasClientPos(e);
+  if (state.tool === 'draw') {
+    startStroke(x, y);
+    e.preventDefault();
+  } else if (state.tool === 'text') {
+    handleCanvasTextCreate(x, y);
+    e.preventDefault();
+  } else if (state.tool === 'eraser') {
+    handleEraser(x, y);
+  }
+});
+window.addEventListener('mousemove', (e) => {
+  const { x, y } = getCanvasClientPos(e);
+  if (state.drawing) continueStroke(x, y);
+});
+window.addEventListener('mouseup', (e) => {
+  if (state.drawing) endStroke();
+});
+
+// touch support
+pdfCanvas.addEventListener('touchstart', (e) => {
+  const { x, y } = getCanvasClientPos(e);
+  if (state.tool === 'draw') startStroke(x,y);
+  else if (state.tool === 'text') handleCanvasTextCreate(x,y);
+  e.preventDefault();
+}, {passive:false});
+pdfCanvas.addEventListener('touchmove', (e) => {
+  const { x, y } = getCanvasClientPos(e);
+  if (state.drawing) continueStroke(x,y);
+  e.preventDefault();
+}, {passive:false});
+pdfCanvas.addEventListener('touchend', (e) => { if (state.drawing) endStroke(); }, {passive:false});
+
+// Eraser: also allow clicking overlay items to delete when in eraser mode
+overlayLayer.addEventListener('click', (e) => {
+  if (state.tool === 'eraser') {
+    // convert click pos
+    const rect = pdfCanvas.getBoundingClientRect();
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    handleEraser(clientX, clientY);
+  }
+});
+
+// double-click on overlay -> if select tool, allow editing
+overlayLayer.addEventListener('dblclick', (e) => {
+  if (state.tool === 'text') {
+    // find nearest text overlay and open editor (handled by each text item)
+  }
+});
+
+// reset all button
+resetAllBtn.addEventListener('click', () => {
+  if (confirm('Reset all overlays? This cannot be undone in this session.')) {
+    resetAll();
+  }
+});
+
+/* -----------------------------
+   Save (compile overlays onto a new PDF and download)
+   Approach:
+    - Load originalPdfBytes into a new PDFDocument (pdf-lib)
+    - For each page: embed font, draw texts and strokes translating PDF coordinates to page-space (pdf-lib uses points)
+    - Save and download
+   ----------------------------- */
+async function downloadEditedPdf() {
+  if (!originalPdfBytes) { showStatus('No PDF loaded'); return; }
+  showStatus('Compiling edited PDF — please wait (this may take a few seconds)...', 8000);
+
+  try {
+    const outDoc = await PDFLib.PDFDocument.load(originalPdfBytes);
+    const helvetica = await outDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+    for (let p = 0; p < outDoc.getPageCount(); ++p) {
+      const page = outDoc.getPage(p);
+      const ov = overlays[p];
+      const pageSize = { width: page.getWidth(), height: page.getHeight() };
+
+      // draw texts
+      if (ov && ov.texts) {
+        for (const t of ov.texts) {
+          // t.x, t.y are already in PDF points coordinates (we stored them that way)
+          // pdf-lib drawText expects bottom-left origin (same), so just draw
+          page.drawText(t.text || '', {
+            x: t.x,
+            y: t.y - (t.size * 0.2), // small baseline adjustment
+            size: t.size,
+            font: helvetica,
+            color: PDFLib.rgb(parseInt(t.color.slice(1,3),16)/255, parseInt(t.color.slice(3,5),16)/255, parseInt(t.color.slice(5,7),16)/255),
+            maxWidth: pageSize.width - t.x - 10
+          });
+        }
+      }
+
+      // draw strokes (render as many small line segments)
+      if (ov && ov.strokes) {
+        for (const s of ov.strokes) {
+          if (!s.points || s.points.length < 2) continue;
+          // draw each segment
+          for (let i = 0; i < s.points.length - 1; ++i) {
+            const a = s.points[i];
+            const b = s.points[i+1];
+            page.drawLine({
+              start: { x: a.x, y: a.y },
+              end:   { x: b.x, y: b.y },
+              thickness: s.width,
+              color: PDFLib.rgb(
+                parseInt(s.color.slice(1,3),16)/255,
+                parseInt(s.color.slice(3,5),16)/255,
+                parseInt(s.color.slice(5,7),16)/255
+              ),
+              opacity: 1
             });
+          }
         }
-        
-        // --- PDF Rendering Logic (UPDATED) ---
+      }
+    }
 
-        /**
-         * Renders the specified page onto the canvas.
-         * Note: This function is now responsible for getting the current (potentially edited) PDF data
-         * from pdfLibDoc and rendering it using pdf.js.
-         * @param {number} num - The page number to render (1-indexed).
-         */
-        async function renderPage(num) {
-            if (!pdfLibDoc) return;
-            
-            currentPageNum = num;
-            updateStatus('Rendering page...');
+    const pdfBytes = await outDoc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const baseName = (fileNameEl.textContent || 'document').replace(/\.\w+$/, '');
+    a.download = baseName + '_edited.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1500);
+    showStatus('Download started', 3000);
+  } catch (err) {
+    console.error('Save error', err);
+    showStatus('Error creating PDF — check console', 4000);
+  }
+}
 
-            try {
-                // 1. Get the current page from pdf-lib
-                const pageIndex = num - 1;
-                const pdfLibPage = pdfLibDoc.getPage(pageIndex);
-                
-                // 2. To render, we must save the current state of the document and load it into pdf.js
-                // This ensures all edits are visible. We only save a temporary one-page document.
-                const tempPdf = await PDFLib.PDFDocument.create();
-                const [copiedPage] = await tempPdf.copyPages(pdfLibDoc, [pageIndex]);
-                tempPdf.addPage(copiedPage);
-                const tempPdfBytes = await tempPdf.save();
-                
-                // 3. Load the single page buffer into pdf.js for display
-                const pdfJsDoc = await pdfjsLib.getDocument({ data: tempPdfBytes }).promise;
-                const page = await pdfJsDoc.getPage(1); // Always the first page of the temp doc
-                
-                // 4. Calculate the viewport (using the unrotated size from pdf-lib for calculations)
-                const pageRotation = pdfLibPage.getRotation().angle; // Get rotation from pdf-lib
-                
-                let viewport = page.getViewport({ scale: 1, rotation: pageRotation });
-                
-                // Determine the maximum width for the canvas (to fit viewport width)
-                const containerWidth = document.getElementById('pdf-viewer-container').clientWidth - 32; // - padding
-                let scale = 1;
-                
-                // Scale down the document if it's too wide
-                if (viewport.width > containerWidth) {
-                    scale = containerWidth / viewport.width;
-                    viewport = page.getViewport({ scale: scale, rotation: pageRotation });
-                }
+/* Connect download buttons */
+downloadButtons.forEach(btn => btn.addEventListener('click', downloadEditedPdf));
 
-                // 5. Set canvas dimensions
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
+/* initial UI */
+setTool('select');
+showStatus('Ready — Open a PDF to begin.');
 
-                // 6. Render the page
-                const renderContext = {
-                    canvasContext: ctx,
-                    viewport: viewport,
-                };
-
-                await page.render(renderContext).promise;
-                
-                // 7. Update UI state
-                updatePageDisplay();
-                updateStatus(`Page ${currentPageNum} loaded. Start editing!`);
-
-            } catch(e) {
-                console.error("Error during rendering:", e);
-                updateStatus('Rendering failed.');
-            }
-        }
-
-        /**
-         * Loads the PDF document from a File object into both pdf-lib (for editing) and pdf.js (for initial render).
-         * @param {File} file - The PDF File object.
-         */
-        async function loadPdfDocument(file) {
-            initialStateEl.classList.add('hidden');
-            fileNameEl.textContent = file.name;
-            fileInfoEl.classList.remove('hidden');
-            editingToolsEl.classList.remove('hidden');
-            savePanelEl.classList.remove('hidden');
-            updateStatus('Loading PDF into editor...');
-
-            try {
-                // Read file as ArrayBuffer
-                const arrayBuffer = await file.arrayBuffer();
-                
-                // Load PDF Document into pdf-lib (for editing)
-                pdfLibDoc = await PDFLib.PDFDocument.load(arrayBuffer);
-                pageCount = pdfLibDoc.getPageCount();
-
-                // Load PDF Document into pdf.js (needed for initial page count only, rendering uses pdfLibDoc)
-                pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                
-                pageCountEl.textContent = `Total Pages: ${pageCount}`;
-                
-                // Render the first page
-                currentPageNum = 1;
-
-                await renderPage(currentPageNum);
-                
-            } catch (error) {
-                console.error("Error loading PDF:", error);
-                showModal('Load Error', 'Failed to load PDF document. Please check the file format or ensure it is not password protected.', false);
-                resetUI();
-            }
-        }
-
-        // --- Event Handlers and UI Updaters ---
-
-        function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (file) {
-                loadPdfDocument(file);
-            }
-        }
-        
-        // Setup Drag and Drop
-        function setupDragDrop() {
-            const dropZone = document.getElementById('controls-panel');
-            
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, preventDefaults, false);
-            });
-            
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dropZone.addEventListener(eventName, () => dropZone.classList.add('border-primary-accent', 'ring-4', 'ring-primary-accent/30'), false);
-            });
-
-            ['dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, () => dropZone.classList.remove('border-primary-accent', 'ring-4', 'ring-primary-accent/30'), false);
-            });
-
-            dropZone.addEventListener('drop', handleDrop, false);
-
-            function preventDefaults(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-
-            function handleDrop(e) {
-                const dt = e.dataTransfer;
-                const file = dt.files[0];
-                if (file && file.type === 'application/pdf') {
-                    loadPdfDocument(file);
-                } else {
-                    showModal('File Error', 'Please drop a valid PDF file.', false);
-                }
-            }
-        }
-        
-        function updateStatus(message) {
-            statusMessageEl.textContent = message;
-        }
-
-        function updatePageDisplay() {
-            currentPageDisplayEl.textContent = `Page ${currentPageNum} of ${pageCount}`;
-            prevPageBtn.disabled = currentPageNum <= 1;
-            nextPageBtn.disabled = currentPageNum >= pageCount;
-        }
-
-        function changePage(direction) {
-            const newPage = currentPageNum + direction;
-            if (newPage >= 1 && newPage <= pageCount) {
-                renderPage(newPage);
-            }
-        }
-
-        function resetUI() {
-            pdfDoc = null;
-            pdfLibDoc = null;
-            pageCount = 0;
-            currentPageNum = 1;
-            toolMode = null;
-            fileInfoEl.classList.add('hidden');
-            editingToolsEl.classList.add('hidden');
-            savePanelEl.classList.add('hidden');
-            initialStateEl.classList.remove('hidden');
-            canvas.width = 0;
-            canvas.height = 0;
-            document.body.classList.remove('tool-text');
-            updateStatus('Ready to Edit');
-        }
-
-        // --- Core Editing Logic ---
-
-        /**
-         * Converts screen coordinates (from a mouse click) to PDF coordinates.
-         * This is crucial because PDF documents have their Y-axis origin at the bottom-left,
-         * while the canvas has its Y-axis origin at the top-left.
-         * @param {number} clickX - X coordinate on the canvas.
-         * @param {number} clickY - Y coordinate on the canvas.
-         * @returns {{x: number, y: number}} PDF coordinates.
-         */
-        function toPdfCoords(clickX, clickY) {
-            const pdfLibPage = pdfLibDoc.getPage(currentPageNum - 1);
-            const pageRotation = pdfLibPage.getRotation().angle;
-            
-            // Get unrotated dimensions
-            const unrotatedWidth = pdfLibPage.getWidth();
-            const unrotatedHeight = pdfLibPage.getHeight();
-
-            // Calculate scaling factors based on *current* canvas size vs unrotated PDF size
-            const scaleX = canvas.width / unrotatedWidth;
-            const scaleY = canvas.height / unrotatedHeight;
-
-            let pdfX, pdfY;
-
-            // Simplified: Assume 0 or 180 rotation for now (for complexity)
-            // PDFLib origin is bottom-left (0,0). Canvas origin is top-left (0,0).
-            
-            // 1. Unscale the click coordinates
-            const unscaledX = clickX / scaleX;
-            const unscaledY = clickY / scaleY;
-
-            // 2. Invert the Y-axis (PDF Y = Page Height - Canvas Y)
-            pdfX = unscaledX;
-            pdfY = unrotatedHeight - unscaledY;
-            
-            // NOTE: Full rotation compensation is complex and omitted for this initial MVP.
-            
-            return { x: pdfX, y: pdfY };
-        }
-        
-        /**
-         * Entry point for text editing. Prompts for text and sets the tool mode.
-         */
-        async function startTextTool() {
-             if (!pdfLibDoc) {
-                showModal('Upload Required', 'Please upload a PDF file first.', false);
-                return;
-            }
-            
-            const text = await showModal('Add Text', 'Enter the text you want to type onto the PDF:', true);
-            
-            if (text) {
-                toolMode = { type: 'text', value: text };
-                document.body.classList.add('tool-text');
-                updateStatus('**Text Tool Active**: Click anywhere on the PDF page to place your text.');
-            } else {
-                toolMode = null;
-                document.body.classList.remove('tool-text');
-                updateStatus('Text tool cancelled. Ready to Edit.');
-            }
-        }
-        
-        /**
-         * Handles the canvas click event for editing tools.
-         */
-        async function handleCanvasClick(event) {
-            if (!toolMode) return;
-
-            if (toolMode.type === 'text') {
-                const rect = canvas.getBoundingClientRect();
-                const clickX = event.clientX - rect.left;
-                const clickY = event.clientY - rect.top;
-
-                const { x: pdfX, y: pdfY } = toPdfCoords(clickX, clickY);
-                
-                // Add text to the PDF structure using pdf-lib
-                const page = pdfLibDoc.getPage(currentPageNum - 1);
-                const text = toolMode.value;
-                const fontSize = 18;
-                
-                try {
-                    // Embed a standard font for simplicity
-                    const font = await pdfLibDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
-                    
-                    // Draw the text
-                    page.drawText(text, {
-                        x: pdfX,
-                        y: pdfY - fontSize, // Adjust for font baseline
-                        size: fontSize,
-                        font: font,
-                        color: PDFLib.rgb(1, 0.75, 0), // Gold/Orange Accent Color
-                    });
-
-                    // Clear tool mode and update UI
-                    toolMode = null;
-                    document.body.classList.remove('tool-text');
-                    updateStatus(`Text added to Page ${currentPageNum} at coordinates (${Math.round(pdfX)}, ${Math.round(pdfY)}).`);
-                    
-                    // Rerender the page to show the new edit
-                    await renderPage(currentPageNum);
-                    
-                } catch (error) {
-                    console.error("Error adding text to PDF:", error);
-                    showModal('Edit Failed', 'Could not add text to the PDF. Check console for details.', false);
-                }
-            }
-        }
-        
-        /**
-         * Rotates the current page by 90 degrees using pdf-lib.
-         */
-        async function rotatePage() {
-            if (!pdfLibDoc) {
-                showModal('Upload Required', 'Please upload a PDF file first.', false);
-                return;
-            }
-            
-            const page = pdfLibDoc.getPage(currentPageNum - 1);
-            
-            // Get current rotation, increment by 90, wrap at 360
-            const currentAngle = page.getRotation().angle;
-            const newAngle = (currentAngle + 90) % 360;
-            
-            page.setRotation(PDFLib.degrees(newAngle));
-
-            updateStatus(`Page ${currentPageNum} rotated to ${newAngle}°. Rerendering...`);
-            
-            // Rerender the page to show the new orientation
-            await renderPage(currentPageNum);
-            
-            showModal('Edit Applied', `Page ${currentPageNum} has been rotated to ${newAngle}°.`, false);
-        }
-
-        /**
-         * Compiles the modified PDF document and triggers a browser download.
-         */
-        async function downloadEditedPdf() {
-            if (!pdfLibDoc) {
-                showModal('Upload Required', 'Please upload a PDF file first.', false);
-                return;
-            }
-
-            updateStatus('Processing edits and saving PDF... (This may take a moment)');
-            
-            try {
-                // Serialize the modified PDF document to bytes
-                const pdfBytes = await pdfLibDoc.save();
-                
-                const downloadTitle = fileNameEl.textContent.replace('.pdf', '') + '_edited.pdf';
-                
-                // Trigger the download in the browser
-                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-
-                // Trigger the download in the browser
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = downloadTitle;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                // Revoke object URL to free memory
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-                updateStatus('Download started.');
-                await showModal('Download Ready', 'Your edited PDF has been generated and the download should begin automatically.', false);
-            } catch (error) {
-                console.error("Error saving PDF:", error);
-                showModal('Save Failed', 'Could not save the edited PDF. Check console for details.', false);
-                updateStatus('Save failed.');
-            }
-        }
-
-        // Initialize UI on load
-        window.addEventListener('DOMContentLoaded', () => {
-            setupDragDrop();
-            updateStatus('Ready to Edit');
-            // Ensure page display is accurate if there is already a document loaded (unlikely on first load)
-            updatePageDisplay();
-        });
-
-        // Ensure keyboard 'Escape' cancels active tool (nice UX)
-        window.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && toolMode) {
-                toolMode = null;
-                document.body.classList.remove('tool-text');
-                updateStatus('Tool cancelled. Ready to Edit.');
-            }
-        });
-
-        // Expose reset function to console (handy during development)
-        window._resetPdfEditor = resetUI;
-    </script>
+/* convenience: allow keyboard shortcuts */
+window.addEventListener('keydown', (e) => {
+  if (e.key === 't') setTool('text');
+  if (e.key === 'd') setTool('draw');
+  if (e.key === 's') setTool('select');
+  if (e.key === 'e') setTool('eraser');
+  if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); downloadEditedPdf(); }
+});
+</script>
 </body>
 </html>
-
