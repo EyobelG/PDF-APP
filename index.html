@@ -9,6 +9,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
     <!-- Load PDF.js Libraries for rendering -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <!-- NEW: Load pdf-lib for editing and saving PDFs -->
+    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.js"></script>
+    
     <script>
         // Set worker source for PDF.js (Crucial for loading PDFs)
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -58,16 +61,16 @@
             background-color: white; /* Ensure editor panels sit cleanly on the pattern */
             box-shadow: 0 0 50px rgba(0, 0, 0, 0.2); /* Lift the editor slightly off the pattern */
         }
-        .main-content {
-            display: grid;
-            grid-template-columns: 1fr; /* Mobile: single column */
-            overflow: hidden;
-        }
+        
         @media (min-width: 1024px) { /* Desktop: 3 columns */
-            .main-content {
+            .pdf-editor-container {
+                 /* Apply the 3-column grid directly to the main container for clarity */
                 grid-template-columns: 20rem 1fr 20rem;
             }
         }
+        
+        /* Mobile layout (default) is 1 column, stacking vertically */
+        
         .scrollable {
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
@@ -100,6 +103,11 @@
             padding: 1rem;
             background-color: #e2e8f0;
         }
+        
+        /* Tool Mode Cursor */
+        .tool-text {
+            cursor: crosshair;
+        }
     </style>
 </head>
 <body class="bg-white font-sans text-primary-dark">
@@ -117,11 +125,10 @@
     <div class="pdf-editor-container">
         
         <!-- File Input and Controls (Left Panel on Desktop) -->
-        <!-- Text color changed to primary-purple for contrast against light background -->
-        <div id="controls-panel" class="lg:col-span-1 p-4 bg-secondary-light border-r border-gray-200 scrollable text-primary-purple">
+        <div id="controls-panel" class="p-4 bg-secondary-light border-r border-gray-200 scrollable text-primary-purple">
             <h2 class="text-lg font-semibold mb-4">1. Upload PDF</h2>
             
-            <!-- File Input Area - Updated border and text colors -->
+            <!-- File Input Area -->
             <label for="pdfFile" class="block cursor-pointer p-6 mb-6 text-center border-2 border-dashed border-primary-purple text-primary-purple rounded-xl bg-white hover:bg-primary-purple hover:text-white transition duration-200 shadow-md">
                 <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-8 w-8 mb-2" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M5.5 13a1.5 1.5 0 01-3 0v-5a.5.5 0 011 0v5a.5.5 0 001 0v-5a.5.5 0 011 0v5zm4 0a1.5 1.5 0 01-3 0v-5a.5.5 0 011 0v5a.5.5 0 001 0v-5a.5.5 0 011 0v5zm4 0a1.5 1.5 0 01-3 0v-5a.5.5 0 011 0v5a.5.5 0 001 0v-5a.5.5 0 011 0v5zM15.5 4H10v.5a.5.5 0 001 0V4h4.5a.5.5 0 010 1H10v.5a.5.5 0 00-1 0V5H4.5A2.5 2.5 0 002 7.5v6A2.5 2.5 0 004.5 16h11A2.5 2.5 0 0018 13.5v-6A2.5 2.5 0 0015.5 4zM17 13.5A1.5 1.5 0 0115.5 15h-11A1.5 1.5 0 013 13.5v-6A1.5 1.5 0 014.5 6H10v1a.5.5 0 001 0V6h4.5A1.5 1.5 0 0117 7.5v6z" />
@@ -141,15 +148,15 @@
             <div id="editing-tools" class="space-y-4 pt-4 border-t border-gray-200 hidden">
                 <h2 class="text-lg font-semibold">2. Editing Tools</h2>
                 
-                <!-- Add Text/Signature Simulation - Updated border/text color -->
-                <button onclick="addTextOverlay()" class="w-full flex items-center justify-center p-3 bg-white text-primary-accent border border-primary-accent rounded-xl shadow hover:bg-primary-purple hover:text-white transition duration-200 font-medium">
+                <!-- Add Text/Signature Tool -->
+                <button onclick="startTextTool()" class="w-full flex items-center justify-center p-3 bg-white text-primary-accent border border-primary-accent rounded-xl shadow hover:bg-primary-purple hover:text-white transition duration-200 font-medium">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
                         <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
                     </svg>
-                    Add Text / Signature
+                    Add Text (Click on PDF)
                 </button>
                 
-                <!-- Rotate Page Simulation -->
+                <!-- Rotate Page Tool (Uses pdf-lib now) -->
                 <button onclick="rotatePage()" class="w-full flex items-center justify-center p-3 bg-white text-gray-700 border border-gray-300 rounded-xl shadow hover:bg-gray-100 transition duration-200 font-medium">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
                         <path fill-rule="evenodd" d="M4.332 13.774a3 3 0 013.435.127 3.001 3.001 0 004.288 0 3 3 0 013.435-.127c.437-.235 1.144-.407 1.832.067C18.257 14.15 19 14.887 19 16.5v1.5a1 1 0 01-1 1h-1a1 1 0 01-1-1v-1.5c0-.629-.68-1.29-1.332-1.29s-1.332.661-1.332 1.29v1.5a1 1 0 01-1 1h-1a1 1 0 01-1-1v-1.5c0-.629-.68-1.29-1.332-1.29s-1.332.661-1.332 1.29v1.5a1 1 0 01-1 1H5a1 1 0 01-1-1v-1.5c0-.629-.68-1.29-1.332-1.29s-1.332.661-1.332 1.29v1.5a1 1 0 01-1 1H1a1 1 0 01-1-1v-1.5c0-1.613.743-2.35 1.41-2.659.688-.474 1.395-.302 1.832-.067zM10 1a9 9 0 100 18A9 9 0 0010 1zM7 11a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
@@ -179,11 +186,11 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0011.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
                 <p class="text-lg font-medium text-center">Open a PDF file to start editing.</p>
-                <p class="text-sm text-center mt-2">Supports multi-page documents and standard editing tools.</p>
+                <p class="text-sm text-center mt-2">Click the "Add Text" button and then click the PDF to type.</p>
             </div>
 
-            <!-- Canvas for PDF Rendering -->
-            <canvas id="pdf-canvas" class="bg-white rounded-lg shadow-xl border-4 border-white"></canvas>
+            <!-- Canvas for PDF Rendering (Added click listener) -->
+            <canvas id="pdf-canvas" class="bg-white rounded-lg shadow-xl border-4 border-white" onclick="handleCanvasClick(event)"></canvas>
             
         </div>
         
@@ -192,10 +199,10 @@
             <h2 class="text-lg font-semibold mb-4">3. Finish & Download</h2>
 
             <div id="save-content" class="p-6 bg-white rounded-xl shadow-md">
-                <p class="text-gray-600 mb-4">When you are done with your edits (e.g., adding text or rotating pages), click the button below to process and download your final document.</p>
+                <p class="text-gray-600 mb-4">Your edits (text, rotation) are saved internally. Click the button below to compile and download the new, modified PDF file.</p>
                 
-                <!-- Download Button - Updated to use accent color -->
-                <button onclick="simulateDownload()" class="w-full flex items-center justify-center p-4 bg-primary-accent text-primary-dark font-bold rounded-xl shadow-lg hover:bg-primary-accent/90 transition duration-200 active:ring-4 active:ring-primary-accent/50">
+                <!-- Download Button (Now executes actual download) -->
+                <button onclick="downloadEditedPdf()" class="w-full flex items-center justify-center p-4 bg-primary-accent text-primary-dark font-bold rounded-xl shadow-lg hover:bg-primary-accent/90 transition duration-200 active:ring-4 active:ring-primary-accent/50">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
@@ -223,10 +230,11 @@
 
     <script>
         // Global variables for PDF handling
-        let pdfDoc = null;
+        let pdfDoc = null; // pdf.js document (for rendering)
+        let pdfLibDoc = null; // pdf-lib document (for editing)
         let currentPageNum = 1;
         let pageCount = 0;
-        let rotationAngle = 0;
+        let toolMode = null; // 'text', 'rotate', etc.
         
         // DOM elements
         const fileInfoEl = document.getElementById('file-info');
@@ -286,52 +294,75 @@
             });
         }
         
-        // --- PDF Rendering Logic ---
+        // --- PDF Rendering Logic (UPDATED) ---
 
         /**
          * Renders the specified page onto the canvas.
-         * @param {number} num - The page number to render.
+         * Note: This function is now responsible for getting the current (potentially edited) PDF data
+         * from pdfLibDoc and rendering it using pdf.js.
+         * @param {number} num - The page number to render (1-indexed).
          */
         async function renderPage(num) {
-            if (!pdfDoc) return;
+            if (!pdfLibDoc) return;
             
             currentPageNum = num;
-            
-            // 1. Get the page
-            const page = await pdfDoc.getPage(num);
-            
-            // 2. Calculate the viewport
-            let viewport = page.getViewport({ scale: 1, rotation: rotationAngle });
-            
-            // Determine the maximum width for the canvas (to fit viewport width)
-            const containerWidth = document.getElementById('pdf-viewer-container').clientWidth - 32; // - padding
-            let scale = 1;
-            
-            // Scale down the document if it's too wide
-            if (viewport.width > containerWidth) {
-                scale = containerWidth / viewport.width;
-                viewport = page.getViewport({ scale: scale, rotation: rotationAngle });
+            updateStatus('Rendering page...');
+
+            try {
+                // 1. Get the current page from pdf-lib
+                const pageIndex = num - 1;
+                const pdfLibPage = pdfLibDoc.getPage(pageIndex);
+                
+                // 2. To render, we must save the current state of the document and load it into pdf.js
+                // This ensures all edits are visible. We only save a temporary one-page document.
+                const tempPdf = await PDFLib.PDFDocument.create();
+                const [copiedPage] = await tempPdf.copyPages(pdfLibDoc, [pageIndex]);
+                tempPdf.addPage(copiedPage);
+                const tempPdfBytes = await tempPdf.save();
+                
+                // 3. Load the single page buffer into pdf.js for display
+                const pdfJsDoc = await pdfjsLib.getDocument({ data: tempPdfBytes }).promise;
+                const page = await pdfJsDoc.getPage(1); // Always the first page of the temp doc
+                
+                // 4. Calculate the viewport (using the unrotated size from pdf-lib for calculations)
+                const pageRotation = pdfLibPage.getRotation().angle; // Get rotation from pdf-lib
+                
+                let viewport = page.getViewport({ scale: 1, rotation: pageRotation });
+                
+                // Determine the maximum width for the canvas (to fit viewport width)
+                const containerWidth = document.getElementById('pdf-viewer-container').clientWidth - 32; // - padding
+                let scale = 1;
+                
+                // Scale down the document if it's too wide
+                if (viewport.width > containerWidth) {
+                    scale = containerWidth / viewport.width;
+                    viewport = page.getViewport({ scale: scale, rotation: pageRotation });
+                }
+
+                // 5. Set canvas dimensions
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                // 6. Render the page
+                const renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport,
+                };
+
+                await page.render(renderContext).promise;
+                
+                // 7. Update UI state
+                updatePageDisplay();
+                updateStatus(`Page ${currentPageNum} loaded. Start editing!`);
+
+            } catch(e) {
+                console.error("Error during rendering:", e);
+                updateStatus('Rendering failed.');
             }
-
-            // 3. Set canvas dimensions
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-
-            // 4. Render the page
-            const renderContext = {
-                canvasContext: ctx,
-                viewport: viewport,
-            };
-
-            await page.render(renderContext).promise;
-            
-            // 5. Update UI state
-            updatePageDisplay();
-            updateStatus('PDF page loaded successfully.');
         }
 
         /**
-         * Loads the PDF document from a File object.
+         * Loads the PDF document from a File object into both pdf-lib (for editing) and pdf.js (for initial render).
          * @param {File} file - The PDF File object.
          */
         async function loadPdfDocument(file) {
@@ -340,27 +371,29 @@
             fileInfoEl.classList.remove('hidden');
             editingToolsEl.classList.remove('hidden');
             savePanelEl.classList.remove('hidden');
-            updateStatus('Loading PDF...');
+            updateStatus('Loading PDF into editor...');
 
             try {
                 // Read file as ArrayBuffer
                 const arrayBuffer = await file.arrayBuffer();
                 
-                // Load PDF Document
+                // Load PDF Document into pdf-lib (for editing)
+                pdfLibDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                pageCount = pdfLibDoc.getPageCount();
+
+                // Load PDF Document into pdf.js (needed for initial page count only, rendering uses pdfLibDoc)
                 pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                pageCount = pdfDoc.numPages;
+                
                 pageCountEl.textContent = `Total Pages: ${pageCount}`;
                 
-                // Reset to page 1 and original rotation
+                // Render the first page
                 currentPageNum = 1;
-                rotationAngle = 0;
 
                 await renderPage(currentPageNum);
                 
             } catch (error) {
                 console.error("Error loading PDF:", error);
-                showModal('Load Error', 'Failed to load PDF document. Please check the file format.', false);
-                // Reset UI on failure
+                showModal('Load Error', 'Failed to load PDF document. Please check the file format or ensure it is not password protected.', false);
                 resetUI();
             }
         }
@@ -383,12 +416,10 @@
             });
             
             ['dragenter', 'dragover'].forEach(eventName => {
-                // Change border color on hover/drag
                 dropZone.addEventListener(eventName, () => dropZone.classList.add('border-primary-accent', 'ring-4', 'ring-primary-accent/30'), false);
             });
 
             ['dragleave', 'drop'].forEach(eventName => {
-                // Restore original border color
                 dropZone.addEventListener(eventName, () => dropZone.classList.remove('border-primary-accent', 'ring-4', 'ring-primary-accent/30'), false);
             });
 
@@ -429,97 +460,213 @@
 
         function resetUI() {
             pdfDoc = null;
+            pdfLibDoc = null;
             pageCount = 0;
             currentPageNum = 1;
-            rotationAngle = 0;
+            toolMode = null;
             fileInfoEl.classList.add('hidden');
             editingToolsEl.classList.add('hidden');
             savePanelEl.classList.add('hidden');
             initialStateEl.classList.remove('hidden');
             canvas.width = 0;
             canvas.height = 0;
+            document.body.classList.remove('tool-text');
             updateStatus('Ready to Edit');
         }
 
-        // --- Editing Simulations ---
+        // --- Core Editing Logic ---
 
-        async function addTextOverlay() {
-            if (!pdfDoc) {
+        /**
+         * Converts screen coordinates (from a mouse click) to PDF coordinates.
+         * This is crucial because PDF documents have their Y-axis origin at the bottom-left,
+         * while the canvas has its Y-axis origin at the top-left.
+         * @param {number} clickX - X coordinate on the canvas.
+         * @param {number} clickY - Y coordinate on the canvas.
+         * @returns {{x: number, y: number}} PDF coordinates.
+         */
+        function toPdfCoords(clickX, clickY) {
+            const pdfLibPage = pdfLibDoc.getPage(currentPageNum - 1);
+            const pageRotation = pdfLibPage.getRotation().angle;
+            
+            // Get unrotated dimensions
+            const unrotatedWidth = pdfLibPage.getWidth();
+            const unrotatedHeight = pdfLibPage.getHeight();
+
+            // Calculate scaling factors based on *current* canvas size vs unrotated PDF size
+            const scaleX = canvas.width / unrotatedWidth;
+            const scaleY = canvas.height / unrotatedHeight;
+
+            let pdfX, pdfY;
+
+            // Simplified: Assume 0 or 180 rotation for now (for complexity)
+            // PDFLib origin is bottom-left (0,0). Canvas origin is top-left (0,0).
+            
+            // 1. Unscale the click coordinates
+            const unscaledX = clickX / scaleX;
+            const unscaledY = clickY / scaleY;
+
+            // 2. Invert the Y-axis (PDF Y = Page Height - Canvas Y)
+            pdfX = unscaledX;
+            pdfY = unrotatedHeight - unscaledY;
+            
+            // NOTE: Full rotation compensation is complex and omitted for this initial MVP.
+            
+            return { x: pdfX, y: pdfY };
+        }
+        
+        /**
+         * Entry point for text editing. Prompts for text and sets the tool mode.
+         */
+        async function startTextTool() {
+             if (!pdfLibDoc) {
                 showModal('Upload Required', 'Please upload a PDF file first.', false);
                 return;
             }
             
-            const text = await showModal('Add Text/Signature', 'Enter the text you want to add to the current page:', true);
+            const text = await showModal('Add Text', 'Enter the text you want to type onto the PDF:', true);
             
             if (text) {
-                // This simulates adding text directly onto the canvas view.
-                const x = 50; // Simple fixed X position
-                const y = 50; // Simple fixed Y position
+                toolMode = { type: 'text', value: text };
+                document.body.classList.add('tool-text');
+                updateStatus('**Text Tool Active**: Click anywhere on the PDF page to place your text.');
+            } else {
+                toolMode = null;
+                document.body.classList.remove('tool-text');
+                updateStatus('Text tool cancelled. Ready to Edit.');
+            }
+        }
+        
+        /**
+         * Handles the canvas click event for editing tools.
+         */
+        async function handleCanvasClick(event) {
+            if (!toolMode) return;
 
-                ctx.font = '24px Inter, sans-serif';
-                ctx.fillStyle = '#FFBE0A'; // Use accent color for the overlay text
-                ctx.fillText(`[EDITED] ${text}`, x, y);
+            if (toolMode.type === 'text') {
+                const rect = canvas.getBoundingClientRect();
+                const clickX = event.clientX - rect.left;
+                const clickY = event.clientY - rect.top;
+
+                const { x: pdfX, y: pdfY } = toPdfCoords(clickX, clickY);
                 
-                updateStatus(`Text overlay "${text.substring(0, 15)}..." added to Page ${currentPageNum}.`);
-                showModal('Edit Applied', `Text: "${text}" has been successfully overlaid on Page ${currentPageNum} (visible in the preview).`, false);
+                // Add text to the PDF structure using pdf-lib
+                const page = pdfLibDoc.getPage(currentPageNum - 1);
+                const text = toolMode.value;
+                const fontSize = 18;
+                
+                try {
+                    // Embed a standard font for simplicity
+                    const font = await pdfLibDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+                    
+                    // Draw the text
+                    page.drawText(text, {
+                        x: pdfX,
+                        y: pdfY - fontSize, // Adjust for font baseline
+                        size: fontSize,
+                        font: font,
+                        color: PDFLib.rgb(1, 0.75, 0), // Gold/Orange Accent Color
+                    });
+
+                    // Clear tool mode and update UI
+                    toolMode = null;
+                    document.body.classList.remove('tool-text');
+                    updateStatus(`Text added to Page ${currentPageNum} at coordinates (${Math.round(pdfX)}, ${Math.round(pdfY)}).`);
+                    
+                    // Rerender the page to show the new edit
+                    await renderPage(currentPageNum);
+                    
+                } catch (error) {
+                    console.error("Error adding text to PDF:", error);
+                    showModal('Edit Failed', 'Could not add text to the PDF. Check console for details.', false);
+                }
             }
         }
-
-        function rotatePage() {
-            if (!pdfDoc) {
+        
+        /**
+         * Rotates the current page by 90 degrees using pdf-lib.
+         */
+        async function rotatePage() {
+            if (!pdfLibDoc) {
                 showModal('Upload Required', 'Please upload a PDF file first.', false);
                 return;
             }
             
-            rotationAngle = (rotationAngle + 90) % 360;
-            renderPage(currentPageNum);
-            updateStatus(`Page ${currentPageNum} rotated to ${rotationAngle}°.`);
-            showModal('Edit Applied', `Page ${currentPageNum} has been rotated to ${rotationAngle}°.`, false);
+            const page = pdfLibDoc.getPage(currentPageNum - 1);
+            
+            // Get current rotation, increment by 90, wrap at 360
+            const currentAngle = page.getRotation().angle;
+            const newAngle = (currentAngle + 90) % 360;
+            
+            page.setRotation(PDFLib.degrees(newAngle));
+
+            updateStatus(`Page ${currentPageNum} rotated to ${newAngle}°. Rerendering...`);
+            
+            // Rerender the page to show the new orientation
+            await renderPage(currentPageNum);
+            
+            showModal('Edit Applied', `Page ${currentPageNum} has been rotated to ${newAngle}°.`, false);
         }
 
-        async function simulateDownload() {
-            if (!pdfDoc) {
+        /**
+         * Compiles the modified PDF document and triggers a browser download.
+         */
+        async function downloadEditedPdf() {
+            if (!pdfLibDoc) {
                 showModal('Upload Required', 'Please upload a PDF file first.', false);
                 return;
             }
 
-            const downloadTitle = fileNameEl.textContent.replace('.pdf', '') + '_edited.pdf';
+            updateStatus('Processing edits and saving PDF... (This may take a moment)');
             
-            updateStatus('Processing edits and compiling PDF...');
+            try {
+                // Serialize the modified PDF document to bytes
+                const pdfBytes = await pdfLibDoc.save();
+                
+                const downloadTitle = fileNameEl.textContent.replace('.pdf', '') + '_edited.pdf';
+                
+                // Trigger the download in the browser
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
 
-            // Simulate server-side processing delay
-            await new Promise(resolve => setTimeout(resolve, 2000)); 
+                // Trigger the download in the browser
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = downloadTitle;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                // Revoke object URL to free memory
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-            // Actual file manipulation requires server-side tools (like Python/Java libs)
-            // or complex client-side libraries. Since we only have a canvas overlay, 
-            // we simulate a successful download of the original file for demonstration.
-            
-            updateStatus(`Download complete for "${downloadTitle}".`);
-            
-            // In a real app, the server would compile the final PDF. Here we just show a message.
-            showModal(
-                'Download Success!', 
-                `Your file, "${downloadTitle}", has been processed and is ready for download. (Simulation complete)`,
-                false
-            );
-
-            // You could potentially trigger a download of the *original* file here, 
-            // but since the canvas edits aren't baked into the PDF structure, we skip
-            // the download for a cleaner simulation.
+                updateStatus('Download started.');
+                await showModal('Download Ready', 'Your edited PDF has been generated and the download should begin automatically.', false);
+            } catch (error) {
+                console.error("Error saving PDF:", error);
+                showModal('Save Failed', 'Could not save the edited PDF. Check console for details.', false);
+                updateStatus('Save failed.');
+            }
         }
 
-        // Initialize drag-drop and event listeners on load
-        window.onload = function() {
+        // Initialize UI on load
+        window.addEventListener('DOMContentLoaded', () => {
             setupDragDrop();
-        };
+            updateStatus('Ready to Edit');
+            // Ensure page display is accurate if there is already a document loaded (unlikely on first load)
+            updatePageDisplay();
+        });
 
-        // Handle resize events to keep the PDF centered and scaled correctly
-        window.addEventListener('resize', () => {
-            if (pdfDoc) {
-                renderPage(currentPageNum);
+        // Ensure keyboard 'Escape' cancels active tool (nice UX)
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && toolMode) {
+                toolMode = null;
+                document.body.classList.remove('tool-text');
+                updateStatus('Tool cancelled. Ready to Edit.');
             }
         });
 
+        // Expose reset function to console (handy during development)
+        window._resetPdfEditor = resetUI;
     </script>
 </body>
 </html>
+
