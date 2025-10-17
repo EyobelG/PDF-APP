@@ -1,292 +1,733 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Live PDF Editor</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BestPDFEditor — Live (Purple)</title>
+
+  <!-- Tailwind for quick styling utilities (optional) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- pdf.js for rendering & pdf-lib for editing/saving -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+
   <style>
-    body {
-      margin: 0;
-      background: #1e1e1e;
-      color: white;
-      display: flex;
-      height: 100vh;
-      overflow: hidden;
-      font-family: sans-serif;
+    :root{
+      --purple-main: #7b3ff2;
+      --accent: #ffbe0a;
+      --bg: #0f172a;
+      --panel: #ffffff;
+      --muted: #94a3b8;
     }
-    #toolbar {
-      width: 70px;
-      background: #2b2b2b;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding-top: 10px;
+    html,body { height:100%; margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background: linear-gradient(180deg, rgba(123,63,242,0.04), rgba(80,0,130,0.02)); color: var(--bg); }
+    .pattern-layer { position:fixed; inset:0; z-index:-1; background-color: #500082; background-image:
+      repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,190,10,0.06) 10px, rgba(255,190,10,0.06) 20px),
+      repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(123,63,242,0.04) 10px, rgba(123,63,242,0.04) 20px);
+      background-size: 40px 40px; opacity:0.07;
     }
-    #toolbar button {
-      background: none;
-      color: white;
-      border: none;
-      padding: 10px;
-      cursor: pointer;
-      font-size: 18px;
-    }
-    #toolbar button.active {
-      background: #555;
-      border-radius: 8px;
-    }
-    #editor {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      position: relative;
-    }
-    canvas {
-      background: white;
-      cursor: crosshair;
-      transition: transform 0.2s ease;
-    }
-    #status {
+
+    header{ height:64px; display:flex; align-items:center; justify-content:space-between; padding:0 1rem; background: linear-gradient(90deg,var(--purple-main), #500082); color:white; box-shadow: 0 6px 30px rgba(2,6,23,0.12); }
+    header h1{ font-weight:700; letter-spacing: -0.5px; }
+    .app { display:grid; grid-template-columns: 20rem 1fr 20rem; gap:1rem; padding:1rem; height: calc(100vh - 64px); box-sizing: border-box; }
+    .panel { background: var(--panel); border-radius:12px; padding:1rem; box-shadow: 0 8px 30px rgba(2,6,23,0.06); overflow:auto; }
+    .left, .right { min-height: 0; } /* allow scroll inside panels */
+    .center { display:flex; align-items:flex-start; justify-content:center; overflow:auto; }
+    .pdf-stage { position: relative; padding:1rem; background:#e6eef8; border-radius:12px; display:inline-block; }
+
+    /* canvas and overlay */
+    canvas#pdf-canvas { display:block; border-radius:8px; box-shadow: 0 12px 40px rgba(2,6,23,0.12); background: white; }
+    #overlay-layer { position:absolute; left:0; top:0; pointer-events: none; }
+
+    /* toolbar buttons */
+    .tool { display:flex; gap:.5rem; flex-wrap:wrap; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:.5rem; padding:.5rem .75rem; border-radius:10px; cursor:pointer; border:1px solid rgba(2,6,23,0.06); user-select:none; background: white; }
+    .btn.active { background: var(--purple-main); color: white; border-color: rgba(0,0,0,0.06); box-shadow: 0 6px 18px rgba(123,63,242,0.12); }
+
+    /* inline editable text editor */
+    .text-editor {
       position: absolute;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0,0,0,0.5);
-      padding: 5px 12px;
-      border-radius: 6px;
-      font-size: 14px;
+      min-width: 40px;
+      max-width: 60vw;
+      min-height: 18px;
+      padding:4px 6px;
+      border-radius:6px;
+      background: rgba(255,255,255,0.9);
+      border: 1px dashed rgba(15,23,42,0.06);
+      outline: none;
+      resize: none;
+      font-family: Inter, system-ui, -apple-system;
+      pointer-events: auto;
+      box-shadow: 0 6px 20px rgba(2,6,23,0.08);
     }
-    #colorPicker {
-      margin-top: 10px;
-    }
-    #cursor {
-      position: absolute;
-      width: 2px;
-      background: black;
-      animation: blink 1s step-end infinite;
-      pointer-events: none;
-    }
-    @keyframes blink {
-      50% { opacity: 0; }
-    }
+
+    /* status bar */
+    footer.status { height:48px; display:flex; align-items:center; gap:1rem; padding:0 .75rem; background: white; border-top-left-radius:12px; border-top-right-radius:12px; box-shadow: 0 -6px 20px rgba(2,6,23,0.04); }
+
+    /* color input */
+    input[type=color] { width:2.2rem; height:2.2rem; border-radius:8px; border:none; padding:0; }
+
+    /* small */
+    .muted { color: var(--muted); font-size:0.9rem; }
+
+    /* hide native file input */
+    #pdfFile { display:none; }
   </style>
 </head>
 <body>
-  <div id="toolbar">
-    <button id="selectTool">🖱️</button>
-    <button id="textTool">✏️</button>
-    <button id="drawTool">🖊️</button>
-    <button id="zoomIn">➕</button>
-    <button id="zoomOut">➖</button>
-    <input type="color" id="colorPicker" value="#000000">
-    <button id="savePdf">💾</button>
+  <div class="pattern-layer"></div>
+
+  <header>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <h1>BestPDFEditor</h1>
+      <div class="muted">Live edits • No popups</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <label for="pdfFile" class="btn" style="background:rgba(255,255,255,0.12); color:white; border:none; cursor:pointer;">Open PDF</label>
+      <input id="pdfFile" type="file" accept="application/pdf">
+      <div id="status-message" class="muted" style="color:white; opacity:0.95">Ready</div>
+    </div>
+  </header>
+
+  <div class="app">
+    <!-- left panel: tools -->
+    <aside class="panel left">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-weight:700">Tools</div>
+        <div class="muted">A</div>
+      </div>
+
+      <div class="tool" style="margin-top:.75rem">
+        <div id="tool-select" class="btn active" title="Select">Select</div>
+        <div id="tool-text" class="btn" title="Text">Text</div>
+        <div id="tool-draw" class="btn" title="Draw">Draw</div>
+        <div id="tool-erase" class="btn" title="Eraser">Eraser</div>
+        <div id="tool-clear" class="btn" title="Clear Page">Clear</div>
+      </div>
+
+      <div style="margin-top:1rem;">
+        <div style="font-weight:700">Appearance</div>
+        <div style="display:flex;align-items:center;gap:.5rem;margin-top:.5rem;">
+          <input id="color-picker" type="color" value="#7b3ff2">
+          <div class="muted">Color</div>
+        </div>
+
+        <div style="margin-top:.75rem">
+          <label class="muted">Font size <span id="font-size-val">18</span></label>
+          <input id="font-size" type="range" min="8" max="72" value="18" style="width:100%">
+        </div>
+
+        <div style="margin-top:.75rem">
+          <label class="muted">Stroke width <span id="stroke-width-val">2</span></label>
+          <input id="stroke-width" type="range" min="1" max="30" value="2" style="width:100%">
+        </div>
+      </div>
+
+      <div style="margin-top:1rem">
+        <div style="font-weight:700">Page</div>
+        <div style="display:flex;gap:.5rem;margin-top:.5rem">
+          <div id="prev-page" class="btn">Prev</div>
+          <div id="next-page" class="btn">Next</div>
+          <div id="page-indicator" class="muted" style="align-self:center">Page — / —</div>
+        </div>
+      </div>
+
+      <div style="margin-top:1rem">
+        <div style="font-weight:700">Zoom</div>
+        <div style="display:flex;gap:.5rem; margin-top:.5rem; align-items:center">
+          <div id="zoom-out" class="btn">−</div>
+          <div id="zoom-level" class="muted">100%</div>
+          <div id="zoom-in" class="btn">+</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- center: PDF viewer -->
+    <main class="center">
+      <div class="pdf-stage" id="pdf-stage">
+        <canvas id="pdf-canvas"></canvas>
+        <!-- overlay layer for text boxes + SVG strokes -->
+        <div id="overlay-layer"></div>
+      </div>
+    </main>
+
+    <!-- right: actions -->
+    <aside class="panel right">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:700">Actions</div>
+        <div class="muted">Save</div>
+      </div>
+
+      <div style="margin-top:1rem; display:flex; flex-direction:column; gap:.5rem;">
+        <div id="download-btn" class="btn" style="background:var(--purple-main); color:white; border:none;">Download Edited PDF</div>
+        <div id="reset-btn" class="btn">Reset All</div>
+      </div>
+
+      <div style="margin-top:1rem">
+        <div style="font-weight:700">Notes</div>
+        <ul class="muted" style="margin-top:.5rem; padding-left:1rem">
+          <li>Click <b>Text</b> then click anywhere on page to type.</li>
+          <li>Draw with <b>Draw</b>. Use <b>Eraser</b> to remove the nearest stroke.</li>
+          <li>Edits are live overlays and baked into the PDF on download.</li>
+        </ul>
+      </div>
+    </aside>
   </div>
-  <div id="editor">
-    <canvas id="pdfCanvas"></canvas>
-    <div id="cursor" hidden></div>
-    <div id="status">Load a PDF to start editing.</div>
-  </div>
-  <input type="file" id="fileInput" accept="application/pdf" hidden>
 
-  <script>
-    const fileInput = document.getElementById('fileInput');
-    const pdfCanvas = document.getElementById('pdfCanvas');
-    const ctx = pdfCanvas.getContext('2d');
-    const cursor = document.getElementById('cursor');
-    const statusText = document.getElementById('status');
-    const colorPicker = document.getElementById('colorPicker');
+  <footer class="status" style="position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:40">
+    <div id="status" class="muted">Ready — open a PDF to begin</div>
+  </footer>
 
-    let pdfDoc = null;
-    let currentPage = 0;
-    let zoom = 1.0;
-    let tool = null;
-    let textBuffer = "";
-    let cursorPos = null;
-    let drawing = false;
-    let drawColor = "#000000";
-    let texts = [];
-    let strokes = [];
+<script>
+/* -------------------
+   Setup & globals
+   ------------------- */
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-    document.getElementById('textTool').onclick = () => setTool('text');
-    document.getElementById('drawTool').onclick = () => setTool('draw');
-    document.getElementById('selectTool').onclick = () => setTool(null);
-    document.getElementById('zoomIn').onclick = () => changeZoom(1.1);
-    document.getElementById('zoomOut').onclick = () => changeZoom(0.9);
-    document.getElementById('savePdf').onclick = saveEditedPdf;
-    colorPicker.oninput = e => drawColor = e.target.value;
+const pdfFileInput = document.getElementById('pdfFile');
+const pdfCanvas = document.getElementById('pdf-canvas');
+const ctx = pdfCanvas.getContext('2d', { alpha: false });
+const overlayLayer = document.getElementById('overlay-layer');
+const statusEl = document.getElementById('status');
+const statusMsgHeader = document.getElementById('status-message');
 
-    function setTool(newTool) {
-      tool = newTool;
-      document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
-      if (newTool) document.getElementById(newTool + 'Tool')?.classList.add('active');
-      if (newTool !== 'text') {
-        hideCursor();
-        textBuffer = "";
-      }
-      updateStatus(`Tool: ${tool || 'select'}`);
-    }
+let pdfJsDoc = null;           // pdf.js doc (for rendering)
+let originalPdfBytes = null;   // original loaded bytes for saving
+let pageCount = 0;
+let currentPage = 1;
+let pageSizes = [];            // stores pages' width/height in PDF points
 
-    function updateStatus(msg) {
-      statusText.textContent = msg;
-    }
+let scale = 1.0;               // zoom multiplier (1 = base fit scale)
+const MIN_SCALE = 0.25, MAX_SCALE = 3.5;
 
-    async function loadPdf(file) {
-      const arrayBuffer = await file.arrayBuffer();
-      pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
-      renderPage(0);
-    }
+const overlays = []; // overlays[pageIndex] = { texts:[], strokes:[] }
+let state = {
+  tool: 'select', // select | text | draw | erase
+  color: '#7b3ff2',
+  fontSize: 18,
+  strokeWidth: 2,
+  drawing: false,
+  currentStroke: null
+};
 
-    async function renderPage(pageNum) {
-      currentPage = pageNum;
-      const page = pdfDoc.getPage(pageNum);
-      const { width, height } = page.getSize();
-      pdfCanvas.width = width;
-      pdfCanvas.height = height;
-      pdfCanvas.style.transform = `scale(${zoom})`;
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, width, height);
+const ui = {
+  toolSelect: document.getElementById('tool-select'),
+  toolText: document.getElementById('tool-text'),
+  toolDraw: document.getElementById('tool-draw'),
+  toolErase: document.getElementById('tool-erase'),
+  toolClear: document.getElementById('tool-clear'),
+  colorPicker: document.getElementById('color-picker'),
+  fontSize: document.getElementById('font-size'),
+  fontSizeVal: document.getElementById('font-size-val'),
+  strokeWidth: document.getElementById('stroke-width'),
+  strokeWidthVal: document.getElementById('stroke-width-val'),
+  prevPage: document.getElementById('prev-page'),
+  nextPage: document.getElementById('next-page'),
+  pageIndicator: document.getElementById('page-indicator'),
+  zoomIn: document.getElementById('zoom-in'),
+  zoomOut: document.getElementById('zoom-out'),
+  zoomLevel: document.getElementById('zoom-level'),
+  downloadBtn: document.getElementById('download-btn'),
+  resetBtn: document.getElementById('reset-btn')
+};
 
-      // render page content as an image
-      const tempDoc = await PDFLib.PDFDocument.create();
-      const [copied] = await tempDoc.copyPages(pdfDoc, [pageNum]);
-      tempDoc.addPage(copied);
-      const pdfBytes = await tempDoc.save();
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, width, height);
-        redrawEdits();
-        URL.revokeObjectURL(url);
-      };
-      img.src = url;
-      updateStatus(`Page ${pageNum + 1} / ${pdfDoc.getPageCount()}`);
-    }
+/* Utility */
+function showStatus(msg, timeout=2200) {
+  statusEl.textContent = msg;
+  statusMsgHeader.textContent = msg;
+  if (timeout) {
+    clearTimeout(showStatus._t);
+    showStatus._t = setTimeout(()=> {
+      statusEl.textContent = 'Ready';
+    }, timeout);
+  }
+}
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function genId(prefix='id'){ return `${prefix}_${Date.now()}_${Math.floor(Math.random()*10000)}`; }
 
-    function redrawEdits() {
-      for (let s of strokes) {
-        ctx.strokeStyle = s.color;
-        ctx.beginPath();
-        ctx.moveTo(s.path[0].x, s.path[0].y);
-        for (let p of s.path.slice(1)) ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-      }
-      for (let t of texts) {
-        ctx.fillStyle = t.color;
-        ctx.font = "16px sans-serif";
-        ctx.fillText(t.text, t.x, t.y);
-      }
-    }
+/* Ensure overlays slot exists for page index */
+function ensureOverlay(i) { if (!overlays[i]) overlays[i] = { texts: [], strokes: [] }; return overlays[i]; }
 
-    pdfCanvas.addEventListener('click', (e) => {
-      if (tool === 'text') {
-        const rect = pdfCanvas.getBoundingClientRect();
-        const x = (e.clientX - rect.left) / zoom;
-        const y = (e.clientY - rect.top) / zoom;
-        cursorPos = { x, y };
-        showCursorAt(x, y);
-        textBuffer = "";
-      }
+/* -------------------
+   Rendering: pdf.js
+   ------------------- */
+async function loadPdfArrayBuffer(arrayBuffer, name='document.pdf') {
+  originalPdfBytes = arrayBuffer.slice(0);
+  pdfJsDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  pageCount = pdfJsDoc.numPages;
+  // initialize overlays array
+  overlays.length = pageCount;
+  for (let i=0;i<pageCount;i++) overlays[i] = { texts:[], strokes:[] };
+  pageSizes.length = pageCount;
+  // prefetch each page size (in points)
+  for (let i=1;i<=pageCount;i++) {
+    const p = await pdfJsDoc.getPage(i);
+    const vp = p.getViewport({ scale: 1 });
+    pageSizes[i-1] = { width: vp.width, height: vp.height };
+  }
+  currentPage = 1;
+  await renderPage(currentPage);
+  showStatus(`Loaded ${name} (${pageCount} pages)`, 3000);
+}
+
+async function renderPage(pageNum) {
+  if (!pdfJsDoc) return;
+  currentPage = clamp(pageNum, 1, pageCount);
+  const page = await pdfJsDoc.getPage(currentPage);
+  // Determine a base scale to fit the viewer nicely (we preserve pixel ratio)
+  const unscaledVP = page.getViewport({ scale: 1 });
+  const stage = document.getElementById('pdf-stage');
+  const maxWidth = Math.max(560, stage.clientWidth - 32);
+  let baseScale = 1;
+  if (unscaledVP.width > maxWidth) baseScale = maxWidth / unscaledVP.width;
+  const renderScale = baseScale * scale;
+  const viewport = page.getViewport({ scale: renderScale });
+  const deviceRatio = window.devicePixelRatio || 1;
+
+  pdfCanvas.width = Math.round(viewport.width * deviceRatio);
+  pdfCanvas.height = Math.round(viewport.height * deviceRatio);
+  pdfCanvas.style.width = Math.round(viewport.width) + 'px';
+  pdfCanvas.style.height = Math.round(viewport.height) + 'px';
+  // overlay must match canvas CSS pixel size
+  overlayLayer.style.width = pdfCanvas.style.width;
+  overlayLayer.style.height = pdfCanvas.style.height;
+  overlayLayer.style.left = pdfCanvas.offsetLeft + 'px';
+  overlayLayer.style.top = pdfCanvas.offsetTop + 'px';
+  // draw page
+  ctx.setTransform(deviceRatio,0,0,deviceRatio,0,0);
+  ctx.clearRect(0,0,pdfCanvas.width, pdfCanvas.height);
+  const renderContext = { canvasContext: ctx, viewport: viewport };
+  await page.render(renderContext).promise;
+  // update page indicator
+  ui.pageIndicator.textContent = `Page ${currentPage} / ${pageCount}`;
+  ui.zoomLevel.textContent = `${Math.round(scale * 100)}%`;
+  // re-render overlays into overlay DOM
+  renderOverlayLayer();
+}
+
+/* -------------------
+   Overlay: DOM + SVG
+   Store overlay coordinates in PDF points (so saved positions are accurate)
+   Conversion helpers between PDF points and overlay pixels:
+---------------------*/
+function pdfToPixelCoords(pdfX, pdfY) {
+  // pdf page points -> pixel coordinates on current canvas
+  const pagePxW = pdfCanvas.width / (window.devicePixelRatio || 1);
+  const pagePxH = pdfCanvas.height / (window.devicePixelRatio || 1);
+  const pdfW = pageSizes[currentPage-1].width;
+  const pdfH = pageSizes[currentPage-1].height;
+  const left = (pdfX / pdfW) * pagePxW;
+  const top = ((pdfH - pdfY) / pdfH) * pagePxH;
+  return { left, top };
+}
+function pixelToPdfCoords(pixelX, pixelY) {
+  const rect = pdfCanvas.getBoundingClientRect();
+  const xOnCanvas = pixelX - rect.left;
+  const yOnCanvas = pixelY - rect.top;
+  const pagePxW = pdfCanvas.width / (window.devicePixelRatio || 1);
+  const pagePxH = pdfCanvas.height / (window.devicePixelRatio || 1);
+  const pdfW = pageSizes[currentPage-1].width;
+  const pdfH = pageSizes[currentPage-1].height;
+  const pdfX = (xOnCanvas / pagePxW) * pdfW;
+  const pdfY = pdfH - (yOnCanvas / pagePxH) * pdfH;
+  return { x: pdfX, y: pdfY };
+}
+
+/* Render overlay layer: SVG for strokes + DOM text boxes */
+function renderOverlayLayer() {
+  overlayLayer.innerHTML = '';
+  const ov = overlays[currentPage - 1];
+  if (!ov) return;
+
+  // SVG strokes
+  if (ov.strokes && ov.strokes.length) {
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', overlayLayer.style.width);
+    svg.setAttribute('height', overlayLayer.style.height);
+    svg.style.position = 'absolute';
+    svg.style.left = 0;
+    svg.style.top = 0;
+    svg.style.pointerEvents = 'none';
+    ov.strokes.forEach(st => {
+      if (!st.points || st.points.length < 2) return;
+      const path = document.createElementNS(svgNS, 'path');
+      const d = st.points.map((pt, i) => {
+        const p = pdfToPixelCoords(pt.x, pt.y);
+        return (i === 0 ? `M ${p.left} ${p.top}` : `L ${p.left} ${p.top}`);
+      }).join(' ');
+      path.setAttribute('d', d);
+      path.setAttribute('stroke', st.color || '#000');
+      path.setAttribute('stroke-width', st.width || 2);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      svg.appendChild(path);
     });
+    overlayLayer.appendChild(svg);
+  }
 
-    document.addEventListener('keydown', (e) => {
-      if (tool === 'text' && cursorPos) {
-        if (e.key === "Enter") {
-          texts.push({ x: cursorPos.x, y: cursorPos.y, text: textBuffer, color: drawColor });
-          textBuffer = "";
-          hideCursor();
-        } else if (e.key === "Backspace") {
-          textBuffer = textBuffer.slice(0, -1);
-        } else if (e.key.length === 1) {
-          textBuffer += e.key;
+  // Text items
+  if (ov.texts && ov.texts.length) {
+    ov.texts.forEach(t => {
+      const p = pdfToPixelCoords(t.x, t.y);
+      const div = document.createElement('div');
+      div.className = 'overlay-text';
+      div.style.position = 'absolute';
+      div.style.left = p.left + 'px';
+      div.style.top  = p.top + 'px';
+      div.style.transform = 'translate(0,0)';
+      div.style.pointerEvents = 'auto';
+      // show committed text
+      const span = document.createElement('div');
+      // compute visual font-size proportional to rendered canvas
+      const pagePxW = pdfCanvas.width / (window.devicePixelRatio || 1);
+      const scaleFactor = pagePxW / pageSizes[currentPage-1].width;
+      span.style.fontSize = (t.size * scaleFactor) + 'px';
+      span.style.color = t.color;
+      span.style.fontWeight = 600;
+      span.textContent = t.text;
+      // double-click (or click with text tool) opens inline editor
+      span.addEventListener('dblclick', (ev) => {
+        if (state.tool === 'text') openInlineEditorFor(t);
+      });
+      // if eraser tool active, click removes
+      span.addEventListener('click', (ev) => {
+        if (state.tool === 'erase') {
+          const arr = overlays[currentPage - 1].texts;
+          const idx = arr.findIndex(tt => tt.id === t.id);
+          if (idx >= 0) { arr.splice(idx,1); renderOverlayLayer(); }
+        } else if (state.tool === 'text') {
+          openInlineEditorFor(t);
         }
-        redraw();
-      }
+      });
+      div.appendChild(span);
+      overlayLayer.appendChild(div);
     });
+  }
+}
 
-    pdfCanvas.addEventListener('mousedown', (e) => {
-      if (tool === 'draw') {
-        drawing = true;
-        const { x, y } = getMousePos(e);
-        strokes.push({ color: drawColor, path: [{ x, y }] });
+/* Inline editor (contenteditable) for adding/editing text */
+function openInlineEditorFor(textObj, suggestedPixelPos) {
+  // remove any existing editor
+  const existing = overlayLayer.querySelector('.text-editor');
+  if (existing) existing.remove();
+
+  // if suggestedPixelPos provided, convert to pdf coords and attach to object
+  const pagePxW = pdfCanvas.width / (window.devicePixelRatio || 1);
+  const scaleFactor = pagePxW / pageSizes[currentPage-1].width;
+
+  const pixelPos = suggestedPixelPos ? suggestedPixelPos : pdfToPixelCoords(textObj.x, textObj.y);
+  const editor = document.createElement('div');
+  editor.contentEditable = 'true';
+  editor.className = 'text-editor';
+  editor.style.left = pixelPos.left + 'px';
+  editor.style.top  = pixelPos.top + 'px';
+  editor.style.fontSize = (textObj.size * scaleFactor) + 'px';
+  editor.style.color = textObj.color;
+  editor.innerText = textObj.text || '';
+  overlayLayer.appendChild(editor);
+  editor.focus();
+
+  function commit() {
+    const newText = editor.innerText.trim();
+    if (newText.length === 0) {
+      // remove
+      const idx = overlays[currentPage - 1].texts.findIndex(t => t.id === textObj.id);
+      if (idx >= 0) overlays[currentPage - 1].texts.splice(idx,1);
+    } else {
+      // update text object. Need to compute pdf coords from editor pixel pos
+      const rect = editor.getBoundingClientRect();
+      const pdfCoords = pixelToPdfCoords(rect.left + 1, rect.top + 2);
+      textObj.x = pdfCoords.x;
+      textObj.y = pdfCoords.y;
+      textObj.text = newText;
+      textObj.color = state.color;
+      textObj.size = state.fontSize;
+    }
+    editor.remove();
+    renderOverlayLayer();
+  }
+
+  editor.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      commit();
+    } else if (ev.key === 'Escape') {
+      editor.remove();
+      renderOverlayLayer();
+    }
+  });
+  editor.addEventListener('blur', commit);
+}
+
+/* Quick create editor when user clicks canvas in text mode */
+function createNewTextAt(pixelX, pixelY) {
+  const pdfCoords = pixelToPdfCoords(pixelX, pixelY);
+  const newText = { id: genId('txt'), x: pdfCoords.x, y: pdfCoords.y, size: state.fontSize, color: state.color, text: '' };
+  ensureOverlay(currentPage - 1).texts.push(newText);
+  renderOverlayLayer();
+  openInlineEditorFor(newText);
+}
+
+/* -------------------
+   Drawing (stroke capture)
+   ------------------- */
+function startStrokeAt(pixelX, pixelY) {
+  const pdfCoords = pixelToPdfCoords(pixelX, pixelY);
+  const stroke = { id: genId('stroke'), color: state.color, width: state.strokeWidth, points: [{ x: pdfCoords.x, y: pdfCoords.y }] };
+  ensureOverlay(currentPage - 1).strokes.push(stroke);
+  state.currentStroke = stroke;
+  state.drawing = true;
+  renderOverlayLayer();
+}
+function extendStrokeTo(pixelX, pixelY) {
+  if (!state.drawing || !state.currentStroke) return;
+  const pdfCoords = pixelToPdfCoords(pixelX, pixelY);
+  state.currentStroke.points.push({ x: pdfCoords.x, y: pdfCoords.y });
+  renderOverlayLayer();
+}
+function endStroke() {
+  state.drawing = false;
+  state.currentStroke = null;
+}
+
+/* Eraser: remove nearest stroke point or text near click */
+function eraseAt(pixelX, pixelY) {
+  const pdfCoords = pixelToPdfCoords(pixelX, pixelY);
+  const ov = overlays[currentPage - 1];
+  if (!ov) return;
+  // stroke tolerance in PDF points (approx)
+  const tol = (8 / (pdfCanvas.width / pageSizes[currentPage-1].width)); // convert 8px to pdf points roughly
+  // find stroke
+  for (let i = ov.strokes.length - 1; i >= 0; --i) {
+    const s = ov.strokes[i];
+    for (const pt of s.points) {
+      const dx = pt.x - pdfCoords.x, dy = pt.y - pdfCoords.y;
+      if (Math.sqrt(dx*dx + dy*dy) < tol) {
+        ov.strokes.splice(i,1);
+        renderOverlayLayer();
+        return;
       }
-    });
+    }
+  }
+  // find text boxes: bounding box heuristic
+  for (let i = ov.texts.length -1; i >= 0; --i) {
+    const t = ov.texts[i];
+    const boxW = Math.max(40, t.size * 4);
+    const boxH = Math.max(16, t.size * 1.3);
+    if (Math.abs(t.x - pdfCoords.x) < (boxW * (pageSizes[currentPage-1].width / pdfCanvas.width)) &&
+        Math.abs(t.y - pdfCoords.y) < (boxH * (pageSizes[currentPage-1].height / pdfCanvas.height))) {
+      ov.texts.splice(i,1);
+      renderOverlayLayer();
+      return;
+    }
+  }
+}
 
-    pdfCanvas.addEventListener('mousemove', (e) => {
-      if (drawing && tool === 'draw') {
-        const { x, y } = getMousePos(e);
-        const path = strokes[strokes.length - 1].path;
-        path.push({ x, y });
-        redraw();
+/* -------------------
+   Event wiring: UI controls & canvas
+   ------------------- */
+function setTool(name) {
+  state.tool = name;
+  [ui.toolSelect, ui.toolText, ui.toolDraw, ui.toolErase].forEach(btn => btn.classList.remove('active'));
+  if (name === 'select') ui.toolSelect.classList.add('active');
+  if (name === 'text') ui.toolText.classList.add('active');
+  if (name === 'draw') ui.toolDraw.classList.add('active');
+  if (name === 'erase') ui.toolErase.classList.add('active');
+  showStatus(`Tool: ${name}`);
+  // overlay pointer events only for clickable text elements; drawing uses canvas pointer
+  if (name === 'text') overlayLayer.style.pointerEvents = 'auto';
+  else overlayLayer.style.pointerEvents = 'none';
+}
+ui.toolSelect.addEventListener('click', () => setTool('select'));
+ui.toolText.addEventListener('click', () => setTool('text'));
+ui.toolDraw.addEventListener('click', () => setTool('draw'));
+ui.toolErase.addEventListener('click', () => setTool('erase'));
+ui.toolClear.addEventListener('click', () => { overlays[currentPage-1] = { texts:[], strokes:[] }; renderOverlayLayer(); showStatus('Cleared page overlays'); });
+
+// appearance inputs
+ui.colorPicker.addEventListener('input', (e) => { state.color = e.target.value; showStatus('Color: ' + state.color); });
+ui.fontSize.addEventListener('input', (e) => { state.fontSize = parseInt(e.target.value,10); ui.fontSizeVal.textContent = state.fontSize; });
+ui.strokeWidth.addEventListener('input', (e) => { state.strokeWidth = parseInt(e.target.value,10); ui.strokeWidthVal.textContent = state.strokeWidth; });
+
+// page nav
+ui.prevPage.addEventListener('click', async () => { if (currentPage > 1) { await renderPage(currentPage - 1); }});
+ui.nextPage.addEventListener('click', async () => { if (currentPage < pageCount) { await renderPage(currentPage + 1); }});
+
+// zoom
+ui.zoomIn.addEventListener('click', () => { scale = clamp(scale * 1.2, MIN_SCALE, MAX_SCALE); renderPage(currentPage); });
+ui.zoomOut.addEventListener('click', () => { scale = clamp(scale / 1.2, MIN_SCALE, MAX_SCALE); renderPage(currentPage); });
+
+// reset/save/reset-all
+ui.resetBtn.addEventListener('click', () => { if (confirm('Reset all overlays?')) { for (let i=0;i<overlays.length;i++) overlays[i] = { texts:[], strokes:[] }; renderOverlayLayer(); showStatus('All overlays reset'); }});
+ui.downloadBtn.addEventListener('click', downloadEditedPdf);
+
+// file input + drag/drop
+pdfFileInput.addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (f) {
+    const ab = await f.arrayBuffer();
+    await loadPdfArrayBuffer(ab, f.name);
+  }
+});
+document.getElementById('pdf-stage').addEventListener('dragover', (ev) => { ev.preventDefault(); }, false);
+document.getElementById('pdf-stage').addEventListener('drop', async (ev) => {
+  ev.preventDefault();
+  const f = ev.dataTransfer.files && ev.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') {
+    const ab = await f.arrayBuffer();
+    await loadPdfArrayBuffer(ab, f.name);
+  } else showStatus('Please drop a PDF file.');
+});
+
+// canvas pointer events (supports mouse + single touch)
+function getClientPos(e) {
+  if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  return { x: e.clientX, y: e.clientY };
+}
+
+pdfCanvas.addEventListener('mousedown', (e) => {
+  const pos = getClientPos(e);
+  if (state.tool === 'draw') {
+    startStrokeAt(pos.x, pos.y);
+  } else if (state.tool === 'text') {
+    createNewTextAt(pos.x, pos.y);
+  } else if (state.tool === 'erase') {
+    eraseAt(pos.x, pos.y);
+  }
+});
+window.addEventListener('mousemove', (e) => {
+  const pos = getClientPos(e);
+  if (state.drawing) extendStrokeTo(pos.x, pos.y);
+});
+window.addEventListener('mouseup', (e) => { if (state.drawing) endStroke(); });
+
+// touch support
+pdfCanvas.addEventListener('touchstart', (e) => {
+  const pos = getClientPos(e);
+  if (state.tool === 'draw') startStrokeAt(pos.x, pos.y);
+  else if (state.tool === 'text') createNewTextAt(pos.x, pos.y);
+  else if (state.tool === 'erase') eraseAt(pos.x, pos.y);
+  e.preventDefault();
+}, { passive:false });
+pdfCanvas.addEventListener('touchmove', (e) => { const pos = getClientPos(e); if (state.drawing) extendStrokeTo(pos.x, pos.y); e.preventDefault(); }, { passive:false });
+pdfCanvas.addEventListener('touchend', (e) => { if (state.drawing) endStroke(); e.preventDefault(); }, { passive:false });
+
+/* -------------------
+   Save: compile overlays with pdf-lib
+   ------------------- */
+async function downloadEditedPdf() {
+  if (!originalPdfBytes) { showStatus('No PDF loaded'); return; }
+  showStatus('Compiling edited PDF — please wait...', 60000);
+  try {
+    const outDoc = await PDFLib.PDFDocument.load(originalPdfBytes);
+    const helv = await outDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+    for (let p = 0; p < outDoc.getPageCount(); ++p) {
+      const page = outDoc.getPage(p);
+      const ov = overlays[p];
+      if (!ov) continue;
+      // draw texts
+      if (ov.texts) {
+        for (const t of ov.texts) {
+          const rgb = hexToRgb(t.color);
+          page.drawText(t.text || '', {
+            x: t.x,
+            y: t.y - (t.size * 0.15),
+            size: t.size,
+            font: helv,
+            color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255),
+            maxWidth: page.getWidth() - t.x - 10
+          });
+        }
       }
-    });
-
-    pdfCanvas.addEventListener('mouseup', () => drawing = false);
-
-    function getMousePos(e) {
-      const rect = pdfCanvas.getBoundingClientRect();
-      return {
-        x: (e.clientX - rect.left) / zoom,
-        y: (e.clientY - rect.top) / zoom
-      };
-    }
-
-    function redraw() {
-      renderPage(currentPage);
-      if (tool === 'text' && cursorPos) {
-        ctx.fillStyle = drawColor;
-        ctx.font = "16px sans-serif";
-        ctx.fillText(textBuffer, cursorPos.x, cursorPos.y);
-        moveCursor(cursorPos.x + ctx.measureText(textBuffer).width + 2, cursorPos.y - 16);
+      // draw strokes — approximate as many line segments
+      if (ov.strokes) {
+        for (const s of ov.strokes) {
+          if (!s.points || s.points.length < 2) continue;
+          const rgb = hexToRgb(s.color);
+          for (let i=0;i<s.points.length-1;i++) {
+            const a = s.points[i], b = s.points[i+1];
+            page.drawLine({
+              start: { x: a.x, y: a.y },
+              end:   { x: b.x, y: b.y },
+              thickness: s.width,
+              color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255),
+              opacity: 1
+            });
+          }
+        }
       }
     }
+    const pdfBytes = await outDoc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (document.title || 'edited') + '_edited.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 1500);
+    showStatus('Download started', 3000);
+  } catch (err) {
+    console.error(err);
+    showStatus('Error creating PDF — check console.', 5000);
+  }
+}
 
-    function showCursorAt(x, y) {
-      cursor.hidden = false;
-      moveCursor(x, y - 16);
-    }
+function hexToRgb(hex) {
+  const h = hex.replace('#','');
+  const bigint = parseInt(h, 16);
+  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
+}
 
-    function moveCursor(x, y) {
-      cursor.style.left = `${x * zoom + pdfCanvas.offsetLeft}px`;
-      cursor.style.top = `${y * zoom + pdfCanvas.offsetTop}px`;
-      cursor.style.height = `16px`;
-      cursor.style.background = drawColor;
-    }
+/* -------------------
+   Helpers & Initialization
+   ------------------- */
+function renderPageIndicator() {
+  ui.pageIndicator.textContent = `Page ${currentPage} / ${pageCount}`;
+  ui.zoomLevel.textContent = `${Math.round(scale * 100)}%`;
+}
 
-    function hideCursor() {
-      cursor.hidden = true;
-    }
+/* Quick load helper from file (called by file input) */
+async function loadPdfFile(file) {
+  if (!file) return;
+  const ab = await file.arrayBuffer();
+  await loadPdfArrayBuffer(ab, file.name);
+}
 
-    function changeZoom(factor) {
-      zoom *= factor;
-      pdfCanvas.style.transform = `scale(${zoom})`;
-      if (cursorPos) moveCursor(cursorPos.x, cursorPos.y - 16);
-    }
+/* expose drag open by double-clicking center area */
+document.querySelector('.pdf-stage').addEventListener('dblclick', () => pdfFileInput.click());
 
-    async function saveEditedPdf() {
-      const newPdf = await PDFLib.PDFDocument.create();
-      const [page] = await newPdf.copyPages(pdfDoc, [currentPage]);
-      newPdf.addPage(page);
-      const p = newPdf.getPages()[0];
-      const font = await newPdf.embedFont(PDFLib.StandardFonts.Helvetica);
+/* attach file input to header open label */
+pdfFileInput.addEventListener('change', (e) => loadPdfFile(e.target.files && e.target.files[0]));
 
-      for (let t of texts) {
-        p.drawText(t.text, { x: t.x, y: t.y, size: 16, color: PDFLib.rgb(0, 0, 0) });
-      }
+/* keep UI values in state */
+ui.colorPicker.addEventListener('input', (e) => state.color = e.target.value);
+ui.fontSize.addEventListener('input', (e) => { state.fontSize = parseInt(e.target.value,10); ui.fontSizeVal.textContent = state.fontSize; });
+ui.strokeWidth.addEventListener('input', (e) => { state.strokeWidth = parseInt(e.target.value,10); ui.strokeWidthVal.textContent = state.strokeWidth; });
 
-      const bytes = await newPdf.save();
-      const blob = new Blob([bytes]);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'edited.pdf';
-      a.click();
-    }
+/* rerender on window resize to maintain fitting base scale */
+window.addEventListener('resize', () => {
+  if (pdfJsDoc) renderPage(currentPage);
+});
 
-    pdfCanvas.addEventListener('dblclick', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => loadPdf(e.target.files[0]));
+/* keyboard shortcuts */
+window.addEventListener('keydown', (e) => {
+  if (e.key === 't') setTool('text');
+  if (e.key === 'd') setTool('draw');
+  if (e.key === 'e') setTool('erase');
+  if (e.key === 'Escape') setTool('select');
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); downloadEditedPdf(); }
+});
 
-  </script>
+/* Initial UI state */
+setTool('select');
+showStatus('Ready — open a PDF (double-click stage or use Open PDF).');
+
+/* -------------------
+   End of script
+   ------------------- */
+</script>
 </body>
 </html>
