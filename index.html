@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BestPDFEditor</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+    <!-- Load PDF.js Libraries for rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        // Set worker source for PDF.js (Crucial for loading PDFs)
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        
+        // Tailwind Configuration
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        // Updated Colors
+                        'primary-purple': '#500082', // Deep Purple
+                        'primary-accent': 'rgb(255, 190, 10)', // Gold/Orange Accent
+                        
+                        'primary-dark': '#0f172a',
+                        'secondary-light': '#f1f5f9',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Pattern Layer Styling */
+        .pattern-layer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1; 
+            /* Deep Purple background */
+            background-color: #500082; 
+            background-image: 
+                /* Repeating Chevron/Diamond Pattern (More visible and logo-like) */
+                repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255, 190, 10, 0.15) 10px, rgba(255, 190, 10, 0.15) 20px),
+                repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(255, 190, 10, 0.15) 10px, rgba(255, 190, 10, 0.15) 20px);
+            background-size: 40px 40px; /* Larger size for a bolder pattern */
+        }
+
+        .pdf-editor-container {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            height: calc(100vh - 4rem); /* Full viewport height minus header */
+            overflow: hidden;
+            background-color: white; /* Ensure editor panels sit cleanly on the pattern */
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.2); /* Lift the editor slightly off the pattern */
+        }
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr; /* Mobile: single column */
+            overflow: hidden;
+        }
+        @media (min-width: 1024px) { /* Desktop: 3 columns */
+            .main-content {
+                grid-template-columns: 20rem 1fr 20rem;
+            }
+        }
+        .scrollable {
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        /* Custom styling for the scrollbar */
+        .scrollable::-webkit-scrollbar {
+            width: 8px;
+        }
+        .scrollable::-webkit-scrollbar-track {
+            background: #e2e8f0;
+        }
+        .scrollable::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 4px;
+        }
+        .scrollable::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        /* Hide the file input, use the label */
+        #pdfFile {
+            display: none;
+        }
+
+        /* Ensure the canvas is centered */
+        #pdf-viewer-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align canvas to the top of the viewport */
+            padding: 1rem;
+            background-color: #e2e8f0;
+        }
+    </style>
+</head>
+<body class="bg-white font-sans text-primary-dark">
+    
+    <!-- Background Pattern Layer -->
+    <div class="pattern-layer"></div>
+
+    <!-- Header -->
+    <header class="bg-primary-purple text-white p-4 shadow-lg flex justify-between items-center h-16">
+        <h1 class="text-2xl font-bold tracking-tight">BestPDFEditor</h1>
+        <!-- Status message updated to use the accent color -->
+        <div id="status-message" class="text-primary-accent text-sm transition duration-300">Ready to Edit</div>
+    </header>
+
+    <div class="pdf-editor-container">
+        
+        <!-- File Input and Controls (Left Panel on Desktop) -->
+        <!-- Text color changed to primary-purple for contrast against light background -->
+        <div id="controls-panel" class="lg:col-span-1 p-4 bg-secondary-light border-r border-gray-200 scrollable text-primary-purple">
+            <h2 class="text-lg font-semibold mb-4">1. Upload PDF</h2>
+            
+            <!-- File Input Area - Updated border and text colors -->
+            <label for="pdfFile" class="block cursor-pointer p-6 mb-6 text-center border-2 border-dashed border-primary-purple text-primary-purple rounded-xl bg-white hover:bg-primary-purple hover:text-white transition duration-200 shadow-md">
+                <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-8 w-8 mb-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M5.5 13a1.5 1.5 0 01-3 0v-5a.5.5 0 011 0v5a.5.5 0 001 0v-5a.5.5 0 011 0v5zm4 0a1.5 1.5 0 01-3 0v-5a.5.5 0 011 0v5a.5.5 0 001 0v-5a.5.5 0 011 0v5zm4 0a1.5 1.5 0 01-3 0v-5a.5.5 0 011 0v5a.5.5 0 001 0v-5a.5.5 0 011 0v5zM15.5 4H10v.5a.5.5 0 001 0V4h4.5a.5.5 0 010 1H10v.5a.5.5 0 00-1 0V5H4.5A2.5 2.5 0 002 7.5v6A2.5 2.5 0 004.5 16h11A2.5 2.5 0 0018 13.5v-6A2.5 2.5 0 0015.5 4zM17 13.5A1.5 1.5 0 0115.5 15h-11A1.5 1.5 0 013 13.5v-6A1.5 1.5 0 014.5 6H10v1a.5.5 0 001 0V6h4.5A1.5 1.5 0 0117 7.5v6z" />
+                </svg>
+                <span class="font-medium">Click to select PDF</span>
+                <p class="text-xs mt-1 opacity-75">or drag and drop here</p>
+            </label>
+            <input type="file" id="pdfFile" accept="application/pdf" onchange="handleFileSelect(event)">
+            
+            <div id="file-info" class="mb-6 p-4 bg-white rounded-xl shadow-inner hidden">
+                <p class="font-medium text-sm text-primary-purple">File Loaded:</p>
+                <p id="file-name" class="text-primary-accent truncate"></p>
+                <p id="page-count" class="text-xs text-gray-500 mt-1"></p>
+            </div>
+
+            <!-- Editing Tools Panel -->
+            <div id="editing-tools" class="space-y-4 pt-4 border-t border-gray-200 hidden">
+                <h2 class="text-lg font-semibold">2. Editing Tools</h2>
+                
+                <!-- Add Text/Signature Simulation - Updated border/text color -->
+                <button onclick="addTextOverlay()" class="w-full flex items-center justify-center p-3 bg-white text-primary-accent border border-primary-accent rounded-xl shadow hover:bg-primary-purple hover:text-white transition duration-200 font-medium">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                    </svg>
+                    Add Text / Signature
+                </button>
+                
+                <!-- Rotate Page Simulation -->
+                <button onclick="rotatePage()" class="w-full flex items-center justify-center p-3 bg-white text-gray-700 border border-gray-300 rounded-xl shadow hover:bg-gray-100 transition duration-200 font-medium">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.332 13.774a3 3 0 013.435.127 3.001 3.001 0 004.288 0 3 3 0 013.435-.127c.437-.235 1.144-.407 1.832.067C18.257 14.15 19 14.887 19 16.5v1.5a1 1 0 01-1 1h-1a1 1 0 01-1-1v-1.5c0-.629-.68-1.29-1.332-1.29s-1.332.661-1.332 1.29v1.5a1 1 0 01-1 1h-1a1 1 0 01-1-1v-1.5c0-.629-.68-1.29-1.332-1.29s-1.332.661-1.332 1.29v1.5a1 1 0 01-1 1H5a1 1 0 01-1-1v-1.5c0-.629-.68-1.29-1.332-1.29s-1.332.661-1.332 1.29v1.5a1 1 0 01-1 1H1a1 1 0 01-1-1v-1.5c0-1.613.743-2.35 1.41-2.659.688-.474 1.395-.302 1.832-.067zM10 1a9 9 0 100 18A9 9 0 0010 1zM7 11a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                    </svg>
+                    Rotate Page (90°)
+                </button>
+
+                <!-- Page Navigation -->
+                <div class="flex justify-between items-center space-x-2 pt-4 border-t border-gray-200">
+                    <button id="prev-page-btn" disabled onclick="changePage(-1)" class="p-2 bg-white text-gray-700 border border-gray-300 rounded-lg shadow hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                    </button>
+                    <span id="current-page-display" class="font-medium text-sm">Page 1 of 1</span>
+                    <button id="next-page-btn" disabled onclick="changePage(1)" class="p-2 bg-white text-gray-700 border border-gray-300 rounded-lg shadow hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                    </button>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- PDF Viewer Area (Center Panel on Desktop) -->
+        <div id="pdf-viewer-container" class="lg:col-span-1 scrollable relative">
+            
+            <div id="initial-state" class="absolute inset-0 flex flex-col justify-center items-center text-gray-500 transition duration-300 p-8">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0011.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                <p class="text-lg font-medium text-center">Open a PDF file to start editing.</p>
+                <p class="text-sm text-center mt-2">Supports multi-page documents and standard editing tools.</p>
+            </div>
+
+            <!-- Canvas for PDF Rendering -->
+            <canvas id="pdf-canvas" class="bg-white rounded-lg shadow-xl border-4 border-white"></canvas>
+            
+        </div>
+        
+        <!-- Action/Save Panel (Right Panel on Desktop) -->
+        <div id="save-panel" class="lg:col-span-1 p-4 bg-secondary-light border-l border-gray-200 scrollable hidden text-primary-purple">
+            <h2 class="text-lg font-semibold mb-4">3. Finish & Download</h2>
+
+            <div id="save-content" class="p-6 bg-white rounded-xl shadow-md">
+                <p class="text-gray-600 mb-4">When you are done with your edits (e.g., adding text or rotating pages), click the button below to process and download your final document.</p>
+                
+                <!-- Download Button - Updated to use accent color -->
+                <button onclick="simulateDownload()" class="w-full flex items-center justify-center p-4 bg-primary-accent text-primary-dark font-bold rounded-xl shadow-lg hover:bg-primary-accent/90 transition duration-200 active:ring-4 active:ring-primary-accent/50">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download Edited PDF
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Custom Modal for Alerts/Inputs (replacing alert/confirm) -->
+    <div id="custom-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full transform transition-all duration-300 scale-95">
+            <h3 id="modal-title" class="text-xl font-bold mb-3 text-primary-purple"></h3>
+            <p id="modal-message" class="text-gray-700 mb-4"></p>
+            <input type="text" id="modal-input" class="w-full p-2 border border-gray-300 rounded-lg focus:border-primary-purple focus:ring focus:ring-primary-purple focus:ring-opacity-50 hidden" placeholder="Enter text here...">
+            <div class="flex justify-end space-x-3 mt-4">
+                <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition duration-150">Cancel</button>
+                <!-- OK Button - Updated to use accent color and dark text -->
+                <button id="modal-ok-btn" class="px-4 py-2 bg-primary-accent text-primary-dark font-medium rounded-lg hover:bg-primary-accent/90 transition duration-150">OK</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // Global variables for PDF handling
+        let pdfDoc = null;
+        let currentPageNum = 1;
+        let pageCount = 0;
+        let rotationAngle = 0;
+        
+        // DOM elements
+        const fileInfoEl = document.getElementById('file-info');
+        const fileNameEl = document.getElementById('file-name');
+        const pageCountEl = document.getElementById('page-count');
+        const editingToolsEl = document.getElementById('editing-tools');
+        const savePanelEl = document.getElementById('save-panel');
+        const canvas = document.getElementById('pdf-canvas');
+        const ctx = canvas.getContext('2d');
+        const initialStateEl = document.getElementById('initial-state');
+        const currentPageDisplayEl = document.getElementById('current-page-display');
+        const prevPageBtn = document.getElementById('prev-page-btn');
+        const nextPageBtn = document.getElementById('next-page-btn');
+        const statusMessageEl = document.getElementById('status-message');
+        
+        // --- Utility Functions (Modal) ---
+        /**
+         * Custom modal utility to replace alert() and prompt().
+         * @param {string} title 
+         * @param {string} message 
+         * @param {boolean} isPrompt 
+         * @returns {Promise<string|null>}
+         */
+        function showModal(title, message, isPrompt = false) {
+            return new Promise(resolve => {
+                const modal = document.getElementById('custom-modal');
+                document.getElementById('modal-title').textContent = title;
+                document.getElementById('modal-message').textContent = message;
+                const inputEl = document.getElementById('modal-input');
+                const okBtn = document.getElementById('modal-ok-btn');
+                const cancelBtn = document.getElementById('modal-cancel-btn');
+
+                inputEl.value = '';
+                inputEl.classList.toggle('hidden', !isPrompt);
+                cancelBtn.classList.toggle('hidden', !isPrompt);
+                modal.classList.add('flex');
+                modal.classList.remove('hidden');
+
+                const handleOK = () => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                    okBtn.removeEventListener('click', handleOK);
+                    cancelBtn.removeEventListener('click', handleCancel);
+                    resolve(isPrompt ? inputEl.value : true);
+                };
+
+                const handleCancel = () => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                    okBtn.removeEventListener('click', handleOK);
+                    cancelBtn.removeEventListener('click', handleCancel);
+                    resolve(null);
+                };
+
+                okBtn.onclick = handleOK;
+                cancelBtn.onclick = handleCancel;
+            });
+        }
+        
+        // --- PDF Rendering Logic ---
+
+        /**
+         * Renders the specified page onto the canvas.
+         * @param {number} num - The page number to render.
+         */
+        async function renderPage(num) {
+            if (!pdfDoc) return;
+            
+            currentPageNum = num;
+            
+            // 1. Get the page
+            const page = await pdfDoc.getPage(num);
+            
+            // 2. Calculate the viewport
+            let viewport = page.getViewport({ scale: 1, rotation: rotationAngle });
+            
+            // Determine the maximum width for the canvas (to fit viewport width)
+            const containerWidth = document.getElementById('pdf-viewer-container').clientWidth - 32; // - padding
+            let scale = 1;
+            
+            // Scale down the document if it's too wide
+            if (viewport.width > containerWidth) {
+                scale = containerWidth / viewport.width;
+                viewport = page.getViewport({ scale: scale, rotation: rotationAngle });
+            }
+
+            // 3. Set canvas dimensions
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            // 4. Render the page
+            const renderContext = {
+                canvasContext: ctx,
+                viewport: viewport,
+            };
+
+            await page.render(renderContext).promise;
+            
+            // 5. Update UI state
+            updatePageDisplay();
+            updateStatus('PDF page loaded successfully.');
+        }
+
+        /**
+         * Loads the PDF document from a File object.
+         * @param {File} file - The PDF File object.
+         */
+        async function loadPdfDocument(file) {
+            initialStateEl.classList.add('hidden');
+            fileNameEl.textContent = file.name;
+            fileInfoEl.classList.remove('hidden');
+            editingToolsEl.classList.remove('hidden');
+            savePanelEl.classList.remove('hidden');
+            updateStatus('Loading PDF...');
+
+            try {
+                // Read file as ArrayBuffer
+                const arrayBuffer = await file.arrayBuffer();
+                
+                // Load PDF Document
+                pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                pageCount = pdfDoc.numPages;
+                pageCountEl.textContent = `Total Pages: ${pageCount}`;
+                
+                // Reset to page 1 and original rotation
+                currentPageNum = 1;
+                rotationAngle = 0;
+
+                await renderPage(currentPageNum);
+                
+            } catch (error) {
+                console.error("Error loading PDF:", error);
+                showModal('Load Error', 'Failed to load PDF document. Please check the file format.', false);
+                // Reset UI on failure
+                resetUI();
+            }
+        }
+
+        // --- Event Handlers and UI Updaters ---
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                loadPdfDocument(file);
+            }
+        }
+        
+        // Setup Drag and Drop
+        function setupDragDrop() {
+            const dropZone = document.getElementById('controls-panel');
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                // Change border color on hover/drag
+                dropZone.addEventListener(eventName, () => dropZone.classList.add('border-primary-accent', 'ring-4', 'ring-primary-accent/30'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                // Restore original border color
+                dropZone.addEventListener(eventName, () => dropZone.classList.remove('border-primary-accent', 'ring-4', 'ring-primary-accent/30'), false);
+            });
+
+            dropZone.addEventListener('drop', handleDrop, false);
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const file = dt.files[0];
+                if (file && file.type === 'application/pdf') {
+                    loadPdfDocument(file);
+                } else {
+                    showModal('File Error', 'Please drop a valid PDF file.', false);
+                }
+            }
+        }
+        
+        function updateStatus(message) {
+            statusMessageEl.textContent = message;
+        }
+
+        function updatePageDisplay() {
+            currentPageDisplayEl.textContent = `Page ${currentPageNum} of ${pageCount}`;
+            prevPageBtn.disabled = currentPageNum <= 1;
+            nextPageBtn.disabled = currentPageNum >= pageCount;
+        }
+
+        function changePage(direction) {
+            const newPage = currentPageNum + direction;
+            if (newPage >= 1 && newPage <= pageCount) {
+                renderPage(newPage);
+            }
+        }
+
+        function resetUI() {
+            pdfDoc = null;
+            pageCount = 0;
+            currentPageNum = 1;
+            rotationAngle = 0;
+            fileInfoEl.classList.add('hidden');
+            editingToolsEl.classList.add('hidden');
+            savePanelEl.classList.add('hidden');
+            initialStateEl.classList.remove('hidden');
+            canvas.width = 0;
+            canvas.height = 0;
+            updateStatus('Ready to Edit');
+        }
+
+        // --- Editing Simulations ---
+
+        async function addTextOverlay() {
+            if (!pdfDoc) {
+                showModal('Upload Required', 'Please upload a PDF file first.', false);
+                return;
+            }
+            
+            const text = await showModal('Add Text/Signature', 'Enter the text you want to add to the current page:', true);
+            
+            if (text) {
+                // This simulates adding text directly onto the canvas view.
+                const x = 50; // Simple fixed X position
+                const y = 50; // Simple fixed Y position
+
+                ctx.font = '24px Inter, sans-serif';
+                ctx.fillStyle = '#FFBE0A'; // Use accent color for the overlay text
+                ctx.fillText(`[EDITED] ${text}`, x, y);
+                
+                updateStatus(`Text overlay "${text.substring(0, 15)}..." added to Page ${currentPageNum}.`);
+                showModal('Edit Applied', `Text: "${text}" has been successfully overlaid on Page ${currentPageNum} (visible in the preview).`, false);
+            }
+        }
+
+        function rotatePage() {
+            if (!pdfDoc) {
+                showModal('Upload Required', 'Please upload a PDF file first.', false);
+                return;
+            }
+            
+            rotationAngle = (rotationAngle + 90) % 360;
+            renderPage(currentPageNum);
+            updateStatus(`Page ${currentPageNum} rotated to ${rotationAngle}°.`);
+            showModal('Edit Applied', `Page ${currentPageNum} has been rotated to ${rotationAngle}°.`, false);
+        }
+
+        async function simulateDownload() {
+            if (!pdfDoc) {
+                showModal('Upload Required', 'Please upload a PDF file first.', false);
+                return;
+            }
+
+            const downloadTitle = fileNameEl.textContent.replace('.pdf', '') + '_edited.pdf';
+            
+            updateStatus('Processing edits and compiling PDF...');
+
+            // Simulate server-side processing delay
+            await new Promise(resolve => setTimeout(resolve, 2000)); 
+
+            // Actual file manipulation requires server-side tools (like Python/Java libs)
+            // or complex client-side libraries. Since we only have a canvas overlay, 
+            // we simulate a successful download of the original file for demonstration.
+            
+            updateStatus(`Download complete for "${downloadTitle}".`);
+            
+            // In a real app, the server would compile the final PDF. Here we just show a message.
+            showModal(
+                'Download Success!', 
+                `Your file, "${downloadTitle}", has been processed and is ready for download. (Simulation complete)`,
+                false
+            );
+
+            // You could potentially trigger a download of the *original* file here, 
+            // but since the canvas edits aren't baked into the PDF structure, we skip
+            // the download for a cleaner simulation.
+        }
+
+        // Initialize drag-drop and event listeners on load
+        window.onload = function() {
+            setupDragDrop();
+        };
+
+        // Handle resize events to keep the PDF centered and scaled correctly
+        window.addEventListener('resize', () => {
+            if (pdfDoc) {
+                renderPage(currentPageNum);
+            }
+        });
+
+    </script>
+</body>
+</html>
